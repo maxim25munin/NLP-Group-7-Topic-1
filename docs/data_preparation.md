@@ -1,63 +1,77 @@
-# Kazakh Wikipedia Dataset Preparation
+# Multilingual Wikipedia Dataset Preparation
 
-This document summarises how the Kazakh Wikipedia sample dataset used for
-Milestone&nbsp;1 was produced.
+This document summarises how the Wikipedia sample datasets committed under the
+`data/` directory were produced for Milestone&nbsp;1.
 
 ## Data source
 
-* **Primary source:** Hugging Face `wikimedia/wikipedia` dump (`20231101.kk`).
-* **Local snapshot:** For reproducibility inside offline environments the
-  processed CoNLL-U export is committed to the repository under
-  `data/kazakh/kazakh_wikipedia.conllu`.
+* **Primary source:** Hugging Face `wikimedia/wikipedia` dumps (e.g.
+  `20231101.en`, `20231101.kk`, `20231101.sw`).
+* **Local snapshot:** Processed CoNLL-U exports are versioned inside this
+  repository under `data/<language>/<language>_wikipedia.conllu`.
+
+The languages currently covered by the script are **de, en, fr, kk, lv, sv, sw,
+ur, wo, yo**.  Each language has its own default subset identifier, output path
+and `sent_id` prefix baked into the configuration.
 
 ## Processing pipeline
 
-The preprocessing is implemented in `scripts/prepare_kazakh_conllu.py`.  A
-recent run was executed on a workstation with internet access using the
-following steps:
+The preprocessing is implemented in `scripts/prepare_multilingual_conllu.py`.
+The script expects internet access to download the selected subset via the
+`datasets` library and performs the following steps:
 
-1. **Load raw articles.** The script relies on the `datasets` library to stream
-   the Hugging Face subset specified via `--subset` (default `20231101.kk`).
-2. **Clean MediaWiki markup.** The helper removes `<ref>` blocks, HTML tags,
-   HTML comments, template braces, category/file lines, and MediaWiki link
-   syntax (`[[link|text]]`). Consecutive apostrophes (`''`, `'''`) used for
-   emphasis are stripped, and gaps inside digit sequences such as `1 350 000`
-   are collapsed into `1350000`.
-3. **Sentence segmentation.** A lightweight regex split on sentence-final
-   punctuation (`.?!`) is applied.
-4. **Tokenisation.** Tokens are extracted with the pattern `\w+|[^\w\s]`,
-   preserving punctuation as individual tokens.
-5. **CoNLL-U serialisation.** Each sentence is written with a `# sent_id` and
-   `# text` header, followed by tab-separated token lines where linguistic
-   annotations are left as `_` placeholders.
+1. **Parse configuration.** Command-line options define the language, subset,
+   output path, record limits, and random seed.  Language-specific defaults are
+   resolved automatically when optional flags are omitted.
+2. **Load raw articles.** The Hugging Face dataset `wikimedia/wikipedia` is
+   loaded using the requested subset and shuffled deterministically via
+   `Dataset.shuffle(seed)`.
+3. **Clean MediaWiki markup.** The helper removes `<ref>` blocks, HTML comments,
+   nested template braces `{{…}}`, HTML tags, category/file lines (multiple
+   languages), and MediaWiki link syntax (`[[target|label]]`).  Consecutive
+   apostrophes used for emphasis are collapsed and whitespace inside digit
+   sequences (e.g. `1 350 000`) is removed before normalising all whitespace.
+4. **Sentence segmentation.** Cleaned text is split with the regular expression
+   `(?<=[.!?؟۔])\s+`, which works for both Latin-script and right-to-left
+   punctuation used by the supported languages.
+5. **Tokenisation.** Tokens are extracted with the pattern `\w+|[^\w\s]`,
+   keeping punctuation marks as standalone tokens and skipping empty strings.
+6. **Filtering.** Sentences shorter than `--min-tokens` (default: 3 tokens) are
+   discarded and the script stops after `--max-sentences` (default: 10 000)
+   emitted sentences.
+7. **CoNLL-U serialisation.** Each sentence is written with a stable
+   `# sent_id` combining the language prefix, article id, and sentence index, as
+   well as a `# text` comment.  Token lines only populate the `ID` and `FORM`
+   columns while leaving linguistic annotations as `_` placeholders.  Sentences
+   are separated by blank lines per the CoNLL-U specification.
 
-Example command:
+Example command producing the default Kazakh export:
 
 ```bash
-python scripts/prepare_kazakh_conllu.py \
-  --subset 20231101.kk \
+python scripts/prepare_multilingual_conllu.py \
+  --language kk \
   --max-sentences 300 \
   --output data/kazakh/kazakh_wikipedia.conllu
 ```
 
-> **Note:** The command requires outbound HTTPS access to download from
-> Hugging Face. When working in a restricted environment, run the script
-> elsewhere and commit the resulting CoNLL-U file.
+> **Note:** The command requires outbound HTTPS access to download from Hugging
+> Face.  When working offline, run the script on a networked machine and commit
+> the resulting CoNLL-U file.
 
 ## Observed data quality issues
 
-Manual inspection of the CoNLL-U file highlighted the following artefacts that
-should be addressed:
+Manual inspection of the generated files highlights recurring artefacts worth
+addressing in future iterations:
 
-* **Hyphenated compounds:** words such as `мұнай-газ` are tokenised into three
-  pieces (`мұнай`, `-`, `газ`). Downstream models may prefer merged tokens or a
-  special handling strategy.
-* **Ellipsis handling:** the naive tokeniser keeps `...` as three individual
+* **Hyphenated compounds:** words such as `мұнай-газ` or `Deutsch-Französisch`
+  are split into three tokens (`token`, `-`, `token`).  Downstream models may
+  require custom handling.
+* **Ellipsis handling:** the regex tokeniser keeps `...` as three individual
   `.` tokens.
-* **Sentence segmentation:** abbreviation- or quote-heavy sentences could be
-  split incorrectly because the segmenter only looks for punctuation followed by
-  whitespace.
+* **Sentence segmentation:** abbreviation- or quote-heavy sentences can still be
+  split incorrectly because segmentation is driven purely by punctuation
+  followed by whitespace.
 
-Addressing these points (e.g., improved segmentation rules, normalising
-ellipsis, and dedicated treatment of hyphenated words) will improve data quality
-for downstream language identification experiments.
+Enhancing segmentation heuristics, normalising ellipses, and introducing
+language-specific tokenisation rules would improve data quality for future
+language identification experiments.
