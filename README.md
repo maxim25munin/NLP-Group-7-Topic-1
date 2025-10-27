@@ -7,7 +7,7 @@ preprocessing pipeline used in downstream experiments.
 
 ## Repository layout
 
-* `scripts/prepare_multilingual_wikipedia` &mdash; downloads, cleans, tokenises, and exports
+* `scripts/prepare_multilingual_conllu` &mdash; downloads, cleans, tokenises, and exports
   Wikipedia articles as CoNLL-U sentences for a range of languages.
 * `data/<language>/<language>_wikipedia.conllu` &mdash; default output locations of the
   processed sentences for each supported language (see table below).
