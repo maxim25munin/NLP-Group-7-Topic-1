@@ -50,16 +50,16 @@ Supported language codes, their default dataset subsets, and output paths:
 
 ```bash
 # Export the default Kazakh sample (10k sentences, >=3 tokens)
-python scripts/prepare_kazakh_conllu.py
+python scripts/prepare_multilingual_conllu.py
 
 # Generate a German sample with custom limits
-python scripts/prepare_kazakh_conllu.py \
+python scripts/prepare_multilingual_conllu.py \
   --language de \
   --max-sentences 25000 \
   --min-tokens 5
 
 # Override both the Hugging Face subset and the output location
-python scripts/prepare_kazakh_conllu.py \
+python scripts/prepare_multilingual_conllu.py \
   --language sw \
   --subset 20231101.sw \
   --output data/swahili/custom_sw_sample.conllu
