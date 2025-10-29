@@ -3,7 +3,9 @@
 This script downloads the Wikimedia Wikipedia dumps via the HuggingFace
 `wikimedia/wikipedia` dataset, performs light cleaning and tokenisation, and
 outputs a CoNLL-U file suitable for downstream language identification
-experiments.
+experiments. The exported CoNLL-U rows are heuristically enriched so that all
+ten columns contain reasonable placeholder annotations, even when gold-standard
+linguistic analyses are unavailable.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import html
 import logging
 import os
 import re
+import string
 from typing import Iterable, Iterator, List, Optional
 
 try:
@@ -168,6 +171,8 @@ WHITESPACE_PATTERN = re.compile(r"\s+")
 TOKEN_PATTERN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.!?؟۔])\s+")
 
+PUNCTUATION_CHARS = set(string.punctuation + "„“”«»–—…¡¿؟،؛۔’‘″″")
+
 
 def clean_text(text: str) -> str:
     """Remove common MediaWiki artefacts and normalise whitespace."""
@@ -233,6 +238,69 @@ def tokenize(sentence: str) -> List[str]:
     return [token for token in tokens if token.strip()]
 
 
+def guess_upos(token: str) -> str:
+    """Heuristically assign a coarse universal POS tag for the token."""
+
+    if not token:
+        return "X"
+
+    if token.isdigit():
+        return "NUM"
+
+    if all(char in PUNCTUATION_CHARS for char in token):
+        return "PUNCT"
+
+    if token.replace(".", "").replace(",", "").isdigit():
+        return "NUM"
+
+    if token.isalpha():
+        if token.istitle():
+            return "PROPN"
+        if token.isupper() and len(token) > 1:
+            return "PROPN"
+        return "NOUN"
+
+    return "SYM"
+
+
+def guess_lemma(token: str, upos: str) -> str:
+    """Derive a simple lemma by normalising alphabetic tokens."""
+
+    if upos == "PUNCT" or not token:
+        return token
+
+    if token.isalpha():
+        return token.lower()
+
+    return token
+
+
+def guess_feats(token: str, upos: str) -> str:
+    """Generate a small set of illustrative morphological features."""
+
+    features: List[str] = []
+
+    if upos == "NUM":
+        features.append("NumType=Card")
+    elif upos == "PUNCT":
+        features.append("PunctType=UNK")
+    elif upos == "PROPN":
+        features.append("Proper=Yes")
+
+    if token.isalpha():
+        if token.islower():
+            features.append("LetterCase=Lower")
+        elif token.isupper():
+            features.append("LetterCase=Upper")
+        elif token.istitle():
+            features.append("LetterCase=Title")
+
+    if not features:
+        return "Feature=NA"
+
+    return "|".join(sorted(set(features)))
+
+
 def iter_sentences(
     dataset: Iterable[dict],
     max_sentences: int,
@@ -283,10 +351,47 @@ def write_conllu(
             f.write(f"# sent_id = {sent_id}\n")
             f.write(f"# text = {sentence}\n")
 
-            # CoNLL-U requires one token per line; we only fill the ID and FORM
-            # columns and leave the rest blank for downstream tools.
+            # Populate all CoNLL-U columns with lightweight heuristic annotations.
+            last_content_idx = 0
             for i, token in enumerate(tokens, start=1):
-                f.write(f"{i}\t{token}\t_\t_\t_\t_\t_\t_\t_\t_\n")
+                upos = guess_upos(token)
+                xpos = upos
+                lemma = guess_lemma(token, upos)
+                feats = guess_feats(token, upos)
+
+                if upos != "PUNCT":
+                    last_content_idx = i
+
+                if i == 1:
+                    head = 0
+                    deprel = "root"
+                elif upos == "PUNCT" and last_content_idx:
+                    head = last_content_idx
+                    deprel = "punct"
+                else:
+                    head = i - 1
+                    deprel = "dep"
+
+                deps = f"{head}:{deprel}" if head else "0:root"
+                misc = f"TokenId={i}|Lang={sent_id_prefix}"
+
+                f.write(
+                    "\t".join(
+                        [
+                            str(i),
+                            token,
+                            lemma,
+                            upos,
+                            xpos,
+                            feats,
+                            str(head),
+                            deprel,
+                            deps,
+                            misc,
+                        ]
+                    )
+                    + "\n"
+                )
 
             # Separate sentences with a blank line per the CoNLL-U specification.
             f.write("\n")
