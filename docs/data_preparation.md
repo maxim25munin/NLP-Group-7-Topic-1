@@ -1,7 +1,17 @@
 # Multilingual Wikipedia Dataset Preparation
 
 This document summarises how the Wikipedia sample datasets committed under the
-`data/` directory were produced for Milestone&nbsp;1.
+`data/` directory were produced for Milestone&nbsp;1 and how to reproduce or extend
+them with the accompanying preprocessing script.
+
+## Prerequisites
+
+* **Python packages:** Install the Hugging Face `datasets` library with
+  `pip install datasets` before running the script.
+* **Network access:** Downloading subsets from Hugging Face requires outbound
+  HTTPS connectivity.  If you need to work offline, run the script on a
+  networked machine first and commit the generated CoNLL-U files to this
+  repository.
 
 ## Data source
 
@@ -12,7 +22,23 @@ This document summarises how the Wikipedia sample datasets committed under the
 
 The languages currently covered by the script are **de, en, fr, kk, lv, sv, sw,
 ur, wo, yo**.  Each language has its own default subset identifier, output path
-and `sent_id` prefix baked into the configuration.
+and `sent_id` prefix baked into the configuration:
+
+| Language code | Default subset | Output path | `sent_id` prefix |
+| ------------- | -------------- | ----------- | ---------------- |
+| `de`          | `20231101.de`  | `data/german/german_wikipedia.conllu`   | `de` |
+| `en`          | `20231101.en`  | `data/english/english_wikipedia.conllu` | `en` |
+| `fr`          | `20231101.fr`  | `data/french/french_wikipedia.conllu`   | `fr` |
+| `kk`          | `20231101.kk`  | `data/kazakh/kazakh_wikipedia.conllu`   | `kk` |
+| `lv`          | `20231101.lv`  | `data/latvian/latvian_wikipedia.conllu` | `lv` |
+| `sv`          | `20231101.sv`  | `data/swedish/swedish_wikipedia.conllu` | `sv` |
+| `sw`          | `20231101.sw`  | `data/swahili/swahili_wikipedia.conllu` | `sw` |
+| `ur`          | `20231101.ur`  | `data/urdu/urdu_wikipedia.conllu`       | `ur` |
+| `wo`          | `20231101.wo`  | `data/wolof/wolof_wikipedia.conllu`     | `wo` |
+| `yo`          | `20231101.yo`  | `data/yoruba/yoruba_wikipedia.conllu`   | `yo` |
+
+All of these defaults can be overridden with command-line arguments when
+running the script.
 
 ## Processing pipeline
 
@@ -57,18 +83,30 @@ The script expects internet access to download the selected subset via the
    above, and sentences are separated by blank lines per the CoNLL-U
    specification.
 
+### Command-line interface
+
+The script exposes several options to customise the export:
+
+* `--language`: Two-letter language code defined in the table above (default:
+  `kk`).
+* `--subset`: Hugging Face subset identifier.  When omitted, the language
+  default is used.
+* `--max-sentences`: Maximum number of sentences to export (default: 10 000).
+* `--min-tokens`: Minimum number of tokens a sentence must contain to be kept
+  (default: 3).
+* `--output`: Destination CoNLL-U file (default: language-specific path).
+* `--seed`: Random seed controlling dataset shuffling (default: 13).
+
 Example command producing the default Kazakh export:
 
 ```bash
 python scripts/prepare_multilingual_conllu.py \
   --language kk \
   --max-sentences 300 \
+  --min-tokens 5 \
+  --seed 21 \
   --output data/kazakh/kazakh_wikipedia.conllu
 ```
-
-> **Note:** The command requires outbound HTTPS access to download from Hugging
-> Face.  When working offline, run the script on a networked machine and commit
-> the resulting CoNLL-U file.
 
 ## Observed data quality issues
 
