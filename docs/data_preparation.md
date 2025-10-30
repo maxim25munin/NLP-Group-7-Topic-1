@@ -39,11 +39,23 @@ The script expects internet access to download the selected subset via the
 6. **Filtering.** Sentences shorter than `--min-tokens` (default: 3 tokens) are
    discarded and the script stops after `--max-sentences` (default: 10 000)
    emitted sentences.
-7. **CoNLL-U serialisation.** Each sentence is written with a stable
-   `# sent_id` combining the language prefix, article id, and sentence index, as
-   well as a `# text` comment.  Token lines only populate the `ID` and `FORM`
-   columns while leaving linguistic annotations as `_` placeholders.  Sentences
-   are separated by blank lines per the CoNLL-U specification.
+7. **Heuristic linguistic enrichment.** Each token receives lightweight
+   Universal Dependencies style annotations derived from simple rules:
+   * `UPOS` and `XPOS` are inferred from casing, character classes, and common
+     punctuation patterns.
+   * Lemmas are lowercased forms of alphabetic tokens, leaving other symbols
+     untouched.
+   * Morphological `FEATS` mark properties such as `NumType=Card`,
+     `Proper=Yes`, and coarse letter-case information when applicable.
+   * Dependency heads default to the previous token while punctuation attaches
+     to the nearest non-punctuation token; root tokens point to `0`.
+   * Miscellaneous metadata includes a deterministic `TokenId` and language
+     code.
+8. **CoNLL-U serialisation.** Each sentence is written with a stable `# sent_id`
+   combining the language prefix, article id, and sentence index, as well as a
+   `# text` comment.  All ten CoNLL-U columns are filled using the heuristics
+   above, and sentences are separated by blank lines per the CoNLL-U
+   specification.
 
 Example command producing the default Kazakh export:
 
