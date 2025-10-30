@@ -3,12 +3,18 @@
 Topic 1: Language Identification &mdash; Milestone 1 focuses on preparing core
 text datasets. This repository currently contains a script that produces
 multilingual CoNLL-U formatted samples of Wikipedia articles to prototype the
-preprocessing pipeline used in downstream experiments.
+preprocessing pipeline used in downstream experiments. The script downloads
+raw dumps from Hugging Face, applies light MediaWiki-aware cleaning, and
+creates token-level placeholder annotations so every CoNLL-U column is
+populated for experimentation.
 
 ## Repository layout
 
 * `scripts/prepare_multilingual_conllu` &mdash; downloads, cleans, tokenises, and exports
-  Wikipedia articles as CoNLL-U sentences for a range of languages.
+  Wikipedia articles as CoNLL-U sentences for a range of languages. The export
+  step fabricates lemmas, UPOS/XPOS tags, morphological features, dependency
+  heads, and `TokenId`/`Lang` metadata using deterministic heuristics so that
+  downstream tools expecting fully populated CoNLL-U rows continue to work.
 * `data/<language>/<language>_wikipedia.conllu` &mdash; default output locations of the
   processed sentences for each supported language (see table below).
 * `docs/data_preparation.md` &mdash; additional notes on dataset construction and
@@ -32,6 +38,12 @@ python -m pip install datasets
 The script exports up to 10,000 sentences by default. It downloads the public
 `wikimedia/wikipedia` dataset hosted on Hugging Face, applies light cleaning,
 tokenises the text, and writes the result to disk as a CoNLL-U corpus.
+
+Each sentence in the output file is preceded by stable `# sent_id` and `# text`
+comments. Tokens receive basic guesses for lemmas and universal POS tags, and
+the dependency structure defaults to a simple chain (or attaches punctuation to
+the most recent non-punctuation token). Output directories are created
+automatically when needed.
 
 Supported language codes, their default dataset subsets, and output paths:
 
@@ -78,6 +90,9 @@ Key options include:
 The script requires network access to download the dataset. If the `datasets`
 package is unavailable, install it as shown above before running the converter.
 
+When the optional dependency cannot be imported, the script raises a runtime
+error prompting you to install it before retrying.
+
 ## Notebook usage
 
 The script detects when it is launched inside a Jupyter notebook (via
@@ -85,7 +100,7 @@ The script detects when it is launched inside a Jupyter notebook (via
 arguments. You can therefore run the pipeline in a notebook cell with:
 
 ```python
-from scripts.prepare_kazakh_conllu import main
+from scripts.prepare_multilingual_conllu import main
 
 main([])  # exports using default settings (Kazakh sample)
 ```
