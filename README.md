@@ -1,3 +1,40 @@
+# NLP-Topic-1-Milestone-2
+
+## Baseline evaluation script
+
+[`scripts/evaluate_language_id_baselines.py`](scripts/evaluate_language_id_baselines.py)
+implements three complementary baselines for the milestone 2 classification
+task:
+
+1. A rule-based system that combines Unicode script inspection with
+   language-specific diacritics and keyword cues.
+2. A classical machine-learning pipeline that feeds character n-gram TF–IDF
+   features into a multinomial logistic regression classifier.
+3. A deep-learning approach that fine-tunes an XLM-RoBERTa sequence
+   classification head using Hugging Face `transformers`.
+
+Each baseline reports quantitative metrics (accuracy, precision/recall/F1, and a
+confusion matrix), qualitative misclassification examples, and an operational
+comparison of scalability and cost. Example usage:
+
+```bash
+python scripts/evaluate_language_id_baselines.py \
+  --data-root data \
+  --max-sentences-per-language 2000 \
+  --output-report reports/baseline_results.json
+```
+
+Fine-tuning the transformer requires optional dependencies from
+`requirements-transformers.txt` (PyTorch, `transformers`, `datasets`, and
+`accelerate`). Install them with:
+
+```bash
+pip install -r requirements-transformers.txt
+```
+
+The script automatically skips the deep-learning baseline when the dependencies
+are unavailable.
+
 # NLP-Topic-1-Milestone-1
 
 Topic 1: Language Identification &mdash; Milestone 1 focuses on preparing core
