@@ -17,7 +17,7 @@ import os
 import re
 import string
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, Optional
+from typing import Iterable, Iterator, List, Optional, TYPE_CHECKING
 
 try:
     from datasets import load_dataset  # type: ignore
@@ -28,6 +28,10 @@ try:
     import stanza  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
     stanza = None
+
+if TYPE_CHECKING:
+    from stanza.models.common.doc import Sentence
+    from stanza import Pipeline
 
 # Dedicated module-level logger so the script can integrate with parent logging
 # configurations while still producing informative progress messages.
@@ -107,10 +111,10 @@ class SentenceRecord:
     sent_idx: int
     text: str
     tokens: List[str]
-    stanza_sentence: Optional["stanza.models.common.doc.Sentence"] = None
+    stanza_sentence: Optional["Sentence"] = None
 
 
-_STANZA_PIPELINES: dict[str, "stanza.Pipeline"] = {}
+_STANZA_PIPELINES: dict[str, "Pipeline"] = {}
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -208,7 +212,7 @@ def _format_word_id(word_id: object) -> str:
     return str(word_id)
 
 
-def get_stanza_pipeline(language: str) -> "stanza.Pipeline":
+def get_stanza_pipeline(language: str) -> "Pipeline":
     """Initialise (or reuse) a Stanza pipeline for the requested language."""
 
     if stanza is None:  # pragma: no cover - optional dependency

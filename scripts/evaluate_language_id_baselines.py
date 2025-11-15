@@ -30,7 +30,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 try:  # Optional dependency used by the logistic regression baseline
     from sklearn.linear_model import LogisticRegression
@@ -118,6 +118,10 @@ except Exception as exc:  # pragma: no cover - optional dependency
     Trainer = None
     TrainingArguments = None
     TRANSFORMERS_IMPORT_ERROR = exc
+
+if TYPE_CHECKING:
+    from transformers import AutoModelForSequenceClassification as HFModel
+    from datasets import Dataset as HFData
 
 LOGGER = logging.getLogger(__name__)
 
@@ -336,9 +340,9 @@ class XLMRClassifier:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.label2id: Dict[str, int] = {}
         self.id2label: Dict[int, str] = {}
-        self.model: Optional[AutoModelForSequenceClassification] = None
+        self.model: Optional[HFModel] = None
 
-    def _encode_dataset(self, dataset: Dataset) -> Dataset:
+    def _encode_dataset(self, dataset: HFData) -> HFData:
         def tokenize_function(batch: Dict[str, List[str]]) -> Dict[str, List[List[int]]]:
             return self.tokenizer(
                 batch["text"],
@@ -384,7 +388,7 @@ class XLMRClassifier:
             per_device_eval_batch_size=self.batch_size,
             learning_rate=self.learning_rate,
             weight_decay=self.weight_decay,
-            evaluation_strategy="epoch",
+            eval_strategy="epoch",
             logging_strategy="epoch",
             save_strategy="no",
             seed=self.seed,
