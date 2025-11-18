@@ -24,6 +24,7 @@ import json
 import logging
 import math
 import os
+import inspect
 import random
 import textwrap
 import unicodedata
@@ -59,7 +60,7 @@ try:  # pragma: no cover - heavy dependency initialisation
     # for users who do have TensorFlow installed.
     os.environ.setdefault("USE_TF", "0")
     os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
-
+    
     import torch
     from datasets import Dataset
 
@@ -104,6 +105,7 @@ try:  # pragma: no cover - heavy dependency initialisation
 
         transformers.utils.is_torch_greater_or_equal = _is_torch_greater_or_equal
 
+    
     from transformers import (
         AutoModelForSequenceClassification,
         AutoTokenizer,
@@ -377,19 +379,37 @@ class XLMRClassifier:
             id2label=self.id2label,
         )
 
-        training_args = TrainingArguments(
+        # Some environments ship older ``transformers`` versions whose
+        # ``TrainingArguments`` constructor does not support the modern
+        # ``evaluation_strategy``/``logging_strategy`` flags.  Build the kwargs
+        # dynamically to stay compatible with both old and new releases.
+        args_signature = inspect.signature(TrainingArguments.__init__).parameters
+        training_kwargs = dict(
             output_dir=str(self.output_dir),
             num_train_epochs=self.num_train_epochs,
             per_device_train_batch_size=self.batch_size,
             per_device_eval_batch_size=self.batch_size,
             learning_rate=self.learning_rate,
             weight_decay=self.weight_decay,
-            evaluation_strategy="epoch",
-            logging_strategy="epoch",
-            save_strategy="no",
             seed=self.seed,
-            load_best_model_at_end=False,
         )
+
+        optional_args = {
+            "evaluation_strategy": "epoch",
+            "logging_strategy": "epoch",
+            "save_strategy": "no",
+            "load_best_model_at_end": False,
+        }
+        for name, value in optional_args.items():
+            if name in args_signature:
+                training_kwargs[name] = value
+
+        # Fall back to the legacy flag used by very old transformers releases
+        # when ``evaluation_strategy`` is unavailable.
+        if "evaluation_strategy" not in training_kwargs and "evaluate_during_training" in args_signature:
+            training_kwargs["evaluate_during_training"] = True
+
+        training_args = TrainingArguments(**training_kwargs)
 
         trainer = Trainer(
             model=self.model,
@@ -782,6 +802,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             )
         args.output_report.write_text(json.dumps(serialisable_results, indent=2, ensure_ascii=False), encoding="utf8")
 
-
 if __name__ == "__main__":
-    main()
+    # Detect whether the script was launched inside a Jupyter notebook. In that
+    # scenario we ignore the notebook's command-line arguments and supply an
+    # empty list so `argparse` falls back to all defaults.
+    import sys
+
+    if sys.argv and sys.argv[0].endswith("ipykernel_launcher.py"):
+        main([])
+    else:
+        main()
