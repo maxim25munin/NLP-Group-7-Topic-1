@@ -35,6 +35,9 @@ pip install -r requirements-transformers.txt
 The script automatically skips the deep-learning baseline when the dependencies
 are unavailable.
 
+For a full description of the experimental setup and findings, see the
+Milestone 2 report in [`reports/milestone2_report.md`](reports/milestone2_report.md).
+
 # NLP-Topic-1-Milestone-1
 
 Topic 1: Language Identification &mdash; Milestone 1 focuses on preparing core
