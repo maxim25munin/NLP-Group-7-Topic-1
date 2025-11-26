@@ -20,12 +20,13 @@ trade-offs between the competing approaches.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import logging
 import math
 import os
-import inspect
 import random
+import re
 import textwrap
 import unicodedata
 from collections import Counter, defaultdict
@@ -44,6 +45,14 @@ except Exception as exc:  # pragma: no cover - optional dependency
         "scikit-learn is required to run the baseline evaluation script."
         "Please install it via `pip install scikit-learn`."
     ) from exc
+
+# Optional dependency for visualising confusion matrices.
+try:  # pragma: no cover - optional dependency
+    import matplotlib.pyplot as plt
+    from pretty_confusion_matrix import pp_matrix_from_data
+except Exception:  # pragma: no cover - optional dependency
+    plt = None
+    pp_matrix_from_data = None
 
 # The deep-learning baseline depends on PyTorch and the Hugging Face
 # transformers stack. We import them lazily so the script can still evaluate the
@@ -465,6 +474,38 @@ def summarise_metrics(
     return {"accuracy": accuracy, "classification_report": report, "confusion_matrix": conf_mat.tolist()}
 
 
+def _slugify_name(name: str) -> str:
+    """Return a filesystem-friendly slug for a model name."""
+
+    slug = re.sub(r"[^\w\-]+", "_", name.lower()).strip("_")
+    return slug or "model"
+
+
+def generate_pretty_confusion_matrix(
+    gold: Sequence[str],
+    predicted: Sequence[str],
+    labels: Sequence[str],
+    output_dir: Optional[Path],
+    model_name: str,
+) -> Optional[Path]:
+    """Render a pretty-confusion-matrix plot if the optional dependency is available."""
+
+    if output_dir is None:
+        return None
+    if plt is None or pp_matrix_from_data is None:
+        LOGGER.warning(
+            "pretty-confusion-matrix is not available; skipping plot for %s", model_name
+        )
+        return None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(8, 6))
+    pp_matrix_from_data(gold, predicted, columns=list(labels), cmap="PuBuGn")
+    filename = output_dir / f"{_slugify_name(model_name)}_confusion_matrix.png"
+    plt.savefig(filename, bbox_inches="tight")
+    plt.close()
+    return filename
+
+
 def format_classification_report(report: Dict[str, Dict[str, float]]) -> str:
     headers = ["precision", "recall", "f1-score", "support"]
     lines = ["label           precision  recall  f1-score  support"]
@@ -574,6 +615,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=None,
         help="Optional path to save the evaluation report as JSON.",
     )
+    parser.add_argument(
+        "--confusion-matrix-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory where pretty-confusion-matrix plots will be written. "
+            "Requires the optional pretty-confusion-matrix dependency."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -582,6 +632,7 @@ class BaselineResult:
     name: str
     metrics: Dict[str, object]
     misclassifications: Dict[str, List[Tuple[str, str]]]
+    confusion_plot: Optional[Path] = None
 
 
 def evaluate_rule_based(
@@ -589,15 +640,19 @@ def evaluate_rule_based(
     train_labels: Sequence[str],
     test_texts: Sequence[str],
     test_labels: Sequence[str],
+    labels: Sequence[str],
+    confusion_matrix_dir: Optional[Path],
 ) -> BaselineResult:
     LOGGER.info("Training rule-based baseline")
     model = RuleBasedIdentifier()
     model.fit(train_texts, train_labels)
     predictions = model.predict(test_texts)
-    labels = sorted(set(train_labels) | set(test_labels))
     metrics = summarise_metrics(test_labels, predictions, labels)
     misclassifications = collect_misclassifications(test_texts, test_labels, predictions)
-    return BaselineResult("Rule-based heuristics", metrics, misclassifications)
+    confusion_plot = generate_pretty_confusion_matrix(
+        test_labels, predictions, labels, confusion_matrix_dir, "Rule-based heuristics"
+    )
+    return BaselineResult("Rule-based heuristics", metrics, misclassifications, confusion_plot)
 
 
 def evaluate_logistic_regression(
@@ -605,15 +660,25 @@ def evaluate_logistic_regression(
     train_labels: Sequence[str],
     test_texts: Sequence[str],
     test_labels: Sequence[str],
+    labels: Sequence[str],
+    confusion_matrix_dir: Optional[Path],
 ) -> BaselineResult:
     LOGGER.info("Training character n-gram logistic regression")
     pipeline = build_logistic_regression_pipeline()
     pipeline.fit(train_texts, train_labels)
     predictions = pipeline.predict(test_texts)
-    labels = sorted(set(train_labels) | set(test_labels))
     metrics = summarise_metrics(test_labels, predictions, labels)
     misclassifications = collect_misclassifications(test_texts, test_labels, predictions)
-    return BaselineResult("Char n-gram logistic regression", metrics, misclassifications)
+    confusion_plot = generate_pretty_confusion_matrix(
+        test_labels,
+        predictions,
+        labels,
+        confusion_matrix_dir,
+        "Char n-gram logistic regression",
+    )
+    return BaselineResult(
+        "Char n-gram logistic regression", metrics, misclassifications, confusion_plot
+    )
 
 
 def evaluate_xlmr(
@@ -624,6 +689,8 @@ def evaluate_xlmr(
     test_texts: Sequence[str],
     test_labels: Sequence[str],
     args: argparse.Namespace,
+    labels: Sequence[str],
+    confusion_matrix_dir: Optional[Path],
 ) -> BaselineResult:
     if torch is None:
         raise RuntimeError(
@@ -642,10 +709,12 @@ def evaluate_xlmr(
     )
     classifier.fit(train_texts, train_labels, val_texts, val_labels)
     predictions = classifier.predict(test_texts)
-    labels = sorted(set(train_labels) | set(test_labels))
     metrics = summarise_metrics(test_labels, predictions, labels)
     misclassifications = collect_misclassifications(test_texts, test_labels, predictions)
-    return BaselineResult("XLM-R fine-tuning", metrics, misclassifications)
+    confusion_plot = generate_pretty_confusion_matrix(
+        test_labels, predictions, labels, confusion_matrix_dir, "XLM-R fine-tuning"
+    )
+    return BaselineResult("XLM-R fine-tuning", metrics, misclassifications, confusion_plot)
 
 
 # ---------------------------------------------------------------------------
@@ -671,6 +740,8 @@ def print_results(result: BaselineResult, labels: Sequence[str]) -> None:
         for label, row in zip(labels, confusion):
             values = " ".join(f"{value:<10}" for value in row)
             print(f"{label:<12}{values}")
+    if result.confusion_plot:
+        print(f"\nSaved pretty confusion matrix to: {result.confusion_plot}")
     if result.misclassifications:
         print("\nRepresentative misclassifications:")
         for gold_label in labels:
@@ -753,8 +824,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     ordered_labels = sorted(set(labels))
 
     results: List[BaselineResult] = []
-    results.append(evaluate_rule_based(X_train, y_train, X_test, y_test))
-    results.append(evaluate_logistic_regression(X_train, y_train, X_test, y_test))
+    results.append(
+        evaluate_rule_based(
+            X_train, y_train, X_test, y_test, ordered_labels, args.confusion_matrix_dir
+        )
+    )
+    results.append(
+        evaluate_logistic_regression(
+            X_train, y_train, X_test, y_test, ordered_labels, args.confusion_matrix_dir
+        )
+    )
 
     if torch is not None:
         try:
@@ -767,6 +846,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     X_test,
                     y_test,
                     args,
+                    ordered_labels,
+                    args.confusion_matrix_dir,
                 )
             )
         except RuntimeError as exc:
@@ -798,6 +879,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     "name": result.name,
                     "metrics": result.metrics,
                     "misclassifications": result.misclassifications,
+                    "confusion_plot": str(result.confusion_plot) if result.confusion_plot else None,
                 }
             )
         args.output_report.write_text(json.dumps(serialisable_results, indent=2, ensure_ascii=False), encoding="utf8")
