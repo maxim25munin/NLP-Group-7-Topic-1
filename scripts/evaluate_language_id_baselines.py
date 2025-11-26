@@ -777,6 +777,30 @@ def compare_models(results: Sequence[BaselineResult]) -> None:
     )
 
 
+def print_dataset_preview(examples: Sequence[SentenceExample], preview_size: int = 10) -> None:
+    """Print the first and last ``preview_size`` sentences in the dataset."""
+
+    if not examples:
+        print("\nNo examples to preview.")
+        return
+
+    print("\n" + "-" * 80)
+    print("Dataset preview (first and last sentences)")
+    print("-" * 80)
+
+    head = examples[:preview_size]
+    tail = examples[-preview_size:] if len(examples) > preview_size else []
+
+    print(f"First {len(head)} sentences:")
+    for idx, example in enumerate(head, start=1):
+        print(f"[{idx:02d}] {example.text}")
+
+    if tail:
+        print(f"\nLast {len(tail)} sentences:")
+        for idx, example in enumerate(tail, start=len(examples) - len(tail) + 1):
+            print(f"[{idx:02d}] {example.text}")
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -794,6 +818,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     )
     if not examples:
         raise SystemExit("No data available. Did you run prepare_multilingual_conllu.py?")
+
+    print_dataset_preview(examples)
 
     texts = [example.text for example in examples]
     labels = [example.label for example in examples]
