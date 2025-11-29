@@ -25,7 +25,8 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple
+from importlib import import_module
+from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 try:
     import spacy
@@ -160,6 +161,8 @@ class RuleBasedIdentifier:
     def __init__(self) -> None:
         self.priors: Dict[str, float] = {}
         self._nlp_cache: Dict[str, spacy.language.Language] = {}
+        self._stopword_cache: Dict[str, Set[str]] = {}
+        self.top_tokens: Dict[str, Set[str]] = {}
         self.keyword_patterns: Dict[str, List[re.Pattern[str]]] = {
             language: [
                 re.compile(rf"\b{re.escape(keyword)}\b", flags=re.IGNORECASE)
@@ -209,13 +212,12 @@ class RuleBasedIdentifier:
         return self._nlp_cache[code]
 
     def _stopword_ratio(self, text: str, language: str) -> float:
-        nlp = self._get_nlp(language)
-        doc = nlp(text)
-        tokens = [token for token in doc if token.is_alpha]
+        stopwords = self._language_stopwords(language)
+        tokens = [token.lower() for token in re.findall(r"\b\w+\b", text)]
         if not tokens:
             return 0.0
-        stopwords = sum(token.is_stop for token in tokens)
-        return stopwords / len(tokens)
+        stopword_hits = sum(token in stopwords for token in tokens)
+        return stopword_hits / len(tokens)
 
     def _keyword_hits(self, text: str, language: str) -> int:
         patterns = self.keyword_patterns.get(language, [])
@@ -231,6 +233,15 @@ class RuleBasedIdentifier:
         label_counts = Counter(labels)
         total = sum(label_counts.values())
         self.priors = {label: count / total for label, count in label_counts.items()}
+
+        token_counts: Dict[str, Counter[str]] = defaultdict(Counter)
+        for text, label in zip(texts, labels):
+            tokens = [t.lower() for t in re.findall(r"\b\w+\b", text) if len(t) > 1]
+            token_counts[label].update(tokens)
+
+        self.top_tokens = {
+            label: {token for token, _ in counter.most_common(40)} for label, counter in token_counts.items()
+        }
 
     def _score_language(self, text: str, language: str) -> float:
         score = math.log(self.priors.get(language, 1e-6))
@@ -249,13 +260,44 @@ class RuleBasedIdentifier:
         score += diacritic_hits * 1.2
 
         stop_ratio = self._stopword_ratio(text, language)
-        score += stop_ratio * 1.5
+        score += stop_ratio * 2.0
+
+        overlap_score = self._token_overlap(text, language)
+        score += overlap_score * 1.2
 
         # Penalise languages that rely on diacritics when the sentence uses only ASCII
         if not diacritic_hits and language in LANGUAGE_SPECIAL_CHARACTERS:
             if all(ord(c) < 128 for c in text):
                 score -= 0.5
         return score
+
+    def _language_stopwords(self, language: str) -> Set[str]:
+        if language in self._stopword_cache:
+            return self._stopword_cache[language]
+
+        code = LANGUAGE_SPACY_CODES.get(language, "")
+        stopwords: Set[str] = set()
+        if code:
+            try:
+                module = import_module(f"spacy.lang.{code}")
+                if hasattr(module, "STOP_WORDS"):
+                    stopwords = set(getattr(module, "STOP_WORDS"))
+            except Exception:
+                stopwords = set()
+        self._stopword_cache[language] = stopwords
+        return stopwords
+
+    def _token_overlap(self, text: str, language: str) -> float:
+        """Return fraction of tokens appearing in the language's frequent vocabulary."""
+
+        vocab = self.top_tokens.get(language)
+        if not vocab:
+            return 0.0
+        tokens = [token.lower() for token in re.findall(r"\b\w+\b", text)]
+        if not tokens:
+            return 0.0
+        hits = sum(token in vocab for token in tokens)
+        return hits / len(tokens)
 
     def predict(self, texts: Sequence[str]) -> List[str]:
         predictions = []
