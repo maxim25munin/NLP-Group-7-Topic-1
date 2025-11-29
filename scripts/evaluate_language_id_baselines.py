@@ -1,20 +1,15 @@
-"""Evaluate multiple baselines for the multilingual language identification task.
+"""Evaluate the rule-based language identifier with spaCy and regex helpers.
 
-The script reads multilingual Wikipedia snippets prepared with
-``scripts/prepare_multilingual_conllu.py`` and trains three families of
-baselines:
+This script loads multilingual Wikipedia snippets prepared with
+``scripts/prepare_multilingual_conllu.py`` and evaluates a single baseline:
 
-* A hand-crafted rule-based classifier that relies on Unicode script
-  inspection, language-specific diacritics, and frequent functional words.
-* A classical machine-learning baseline that feeds character n-gram TF–IDF
-  features into a multinomial logistic regression classifier.
-* A deep-learning baseline that fine-tunes an `XLM-RoBERTa` sequence
-  classification head via Hugging Face `transformers`.
+* A rule-based classifier that combines Unicode script inspection, language
+  specific diacritics, frequent functional words, and spaCy token statistics.
+  Regular expressions are used to match keywords with proper word boundaries
+  and to count language-specific diacritic characters.
 
-Each system is evaluated quantitatively (accuracy, precision/recall/F1, and a
-confusion matrix) and qualitatively through a sample of misclassified sentences.
-At the end of the run the script prints a short comparison that highlights the
-trade-offs between the competing approaches.
+The evaluation reports accuracy, precision/recall/F1, a confusion matrix, and
+representative misclassifications for quick qualitative inspection.
 """
 
 from __future__ import annotations
@@ -23,9 +18,8 @@ import argparse
 import json
 import logging
 import math
-import os
-import inspect
 import random
+import re
 import textwrap
 import unicodedata
 from collections import Counter, defaultdict
@@ -33,99 +27,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
-try:  # Optional dependency used by the logistic regression baseline
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-    from sklearn.model_selection import train_test_split
-    from sklearn.pipeline import Pipeline
-    from sklearn.feature_extraction.text import TfidfVectorizer
-except Exception as exc:  # pragma: no cover - optional dependency
+try:
+    import spacy
+except Exception as exc:  # pragma: no cover - external dependency
     raise SystemExit(
-        "scikit-learn is required to run the baseline evaluation script."
-        "Please install it via `pip install scikit-learn`."
+        "spaCy is required to run the rule-based evaluation script. "
+        "Install it via `pip install spacy`."
     ) from exc
 
-# The deep-learning baseline depends on PyTorch and the Hugging Face
-# transformers stack. We import them lazily so the script can still evaluate the
-# classical baselines in environments where GPU support is unavailable.
-TRANSFORMERS_IMPORT_ERROR: Optional[Exception] = None
-
-try:  # pragma: no cover - heavy dependency initialisation
-    # Explicitly disable the TensorFlow backend in Hugging Face `transformers`.
-    #
-    # Users running the notebook on Windows reported crashes when the
-    # `Trainer` import tried to load TensorFlow shared libraries that are not
-    # available in their environment.  Setting the environment flags keeps the
-    # library in its PyTorch-only mode while retaining the optional dependency
-    # for users who do have TensorFlow installed.
-    os.environ.setdefault("USE_TF", "0")
-    os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
-    
-    import torch
-    from datasets import Dataset
-
-    # NOTE: Some environments ship an older version of Hugging Face
-    # ``transformers`` that predates the ``is_torch_greater_or_equal`` utility
-    # function.  Recent releases of the library import this helper from
-    # ``transformers.utils`` when initialising the :class:`~transformers.Trainer`
-    # class.  If the function is missing the import raises an ``ImportError``
-    # even though the rest of the API works as expected.  To keep the training
-    # baseline usable without forcing a specific ``transformers`` version we
-    # provide a tiny compatibility shim before importing the trainer-related
-    # classes.
-    import transformers
-
-    if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
-        try:
-            from packaging import version
-        except Exception:  # pragma: no cover - packaging is part of std envs
-            version = None
-
-        def _is_torch_greater_or_equal(min_version: str) -> bool:
-            """Return ``True`` if the installed torch version satisfies ``min_version``.
-
-            The real helper was introduced in ``transformers`` 4.38.  Older
-            versions that still rely on :class:`~transformers.Trainer` do not
-            ship the utility, so we emulate the behaviour that recent releases
-            expect.  This mirrors the logic used inside ``transformers`` and is
-            sufficient for the training loop implemented in this repository.
-            """
-
-            if torch is None:
-                return False
-            if version is None:
-                # Fallback to a very small parser that covers the ``MAJOR.MINOR``
-                # patterns we use in this project.
-                def _parse(ver: str) -> tuple[int, ...]:
-                    return tuple(int(part) for part in ver.split(".") if part.isdigit())
-
-                return _parse(torch.__version__) >= _parse(min_version)
-
-            return version.parse(torch.__version__) >= version.parse(min_version)
-
-        transformers.utils.is_torch_greater_or_equal = _is_torch_greater_or_equal
-
-    
-    from transformers import (
-        AutoModelForSequenceClassification,
-        AutoTokenizer,
-        Trainer,
-        TrainingArguments,
-    )
+try:  # Optional dependency used for evaluation metrics
+    from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+    from sklearn.model_selection import train_test_split
 except Exception as exc:  # pragma: no cover - optional dependency
-    torch = None
-    Dataset = None
-    AutoModelForSequenceClassification = None
-    AutoTokenizer = None
-    Trainer = None
-    TrainingArguments = None
-    TRANSFORMERS_IMPORT_ERROR = exc
+    raise SystemExit(
+        "scikit-learn is required to run the evaluation script. "
+        "Please install it via `pip install scikit-learn`."
+    ) from exc
 
 LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data loading utilities
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SentenceExample:
@@ -201,14 +125,14 @@ LANGUAGE_SPECIAL_CHARACTERS: Dict[str, str] = {
 }
 
 LANGUAGE_KEYWORDS: Dict[str, Tuple[str, ...]] = {
-    "german": (" und ", " der ", " die ", " nicht "),
-    "english": (" the ", " and ", " is ", " was "),
-    "french": (" le ", " la ", " les ", " des "),
-    "swedish": (" och ", " det ", " som ", " inte "),
-    "latvian": (" un ", " kas ", " par ", " ar "),
-    "swahili": (" ya ", " kwa ", " na ", " cha "),
-    "wolof": (" ci ", " ak ", " la ", " nga "),
-    "yoruba": (" ni ", " ati ", " ṣe ", " jẹ "),
+    "german": ("und", "der", "die", "nicht"),
+    "english": ("the", "and", "is", "was"),
+    "french": ("le", "la", "les", "des"),
+    "swedish": ("och", "det", "som", "inte"),
+    "latvian": ("un", "kas", "par", "ar"),
+    "swahili": ("ya", "kwa", "na", "cha"),
+    "wolof": ("ci", "ak", "la", "nga"),
+    "yoruba": ("ni", "ati", "ṣe", "jẹ"),
 }
 
 LANGUAGE_SCRIPTS: Dict[str, str] = {
@@ -216,12 +140,38 @@ LANGUAGE_SCRIPTS: Dict[str, str] = {
     "urdu": "Arabic",
 }
 
+LANGUAGE_SPACY_CODES: Dict[str, str] = {
+    "german": "de",
+    "english": "en",
+    "french": "fr",
+    "swedish": "sv",
+    "latvian": "lv",
+    "swahili": "sw",
+    "wolof": "wo",
+    "yoruba": "yo",
+    "kazakh": "kk",
+    "urdu": "ur",
+}
+
 
 class RuleBasedIdentifier:
-    """Heuristic classifier for language identification."""
+    """Heuristic classifier for language identification using spaCy and regex."""
 
     def __init__(self) -> None:
         self.priors: Dict[str, float] = {}
+        self._nlp_cache: Dict[str, spacy.language.Language] = {}
+        self.keyword_patterns: Dict[str, List[re.Pattern[str]]] = {
+            language: [
+                re.compile(rf"\b{re.escape(keyword)}\b", flags=re.IGNORECASE)
+                for keyword in keywords
+            ]
+            for language, keywords in LANGUAGE_KEYWORDS.items()
+        }
+        self.diacritic_patterns: Dict[str, re.Pattern[str]] = {
+            language: re.compile(f"[{re.escape(chars)}]")
+            for language, chars in LANGUAGE_SPECIAL_CHARACTERS.items()
+            if chars
+        }
 
     @staticmethod
     def _dominant_script(text: str) -> Optional[str]:
@@ -248,6 +198,35 @@ class RuleBasedIdentifier:
         script, _ = counts.most_common(1)[0]
         return script
 
+    def _get_nlp(self, language: str) -> spacy.language.Language:
+        code = LANGUAGE_SPACY_CODES.get(language, "xx")
+        if code not in self._nlp_cache:
+            try:
+                nlp = spacy.blank(code)
+            except Exception:
+                nlp = spacy.blank("xx")
+            self._nlp_cache[code] = nlp
+        return self._nlp_cache[code]
+
+    def _stopword_ratio(self, text: str, language: str) -> float:
+        nlp = self._get_nlp(language)
+        doc = nlp(text)
+        tokens = [token for token in doc if token.is_alpha]
+        if not tokens:
+            return 0.0
+        stopwords = sum(token.is_stop for token in tokens)
+        return stopwords / len(tokens)
+
+    def _keyword_hits(self, text: str, language: str) -> int:
+        patterns = self.keyword_patterns.get(language, [])
+        return sum(len(pattern.findall(text)) for pattern in patterns)
+
+    def _diacritic_hits(self, text: str, language: str) -> int:
+        pattern = self.diacritic_patterns.get(language)
+        if not pattern:
+            return 0
+        return len(pattern.findall(text))
+
     def fit(self, texts: Sequence[str], labels: Sequence[str]) -> None:
         label_counts = Counter(labels)
         total = sum(label_counts.values())
@@ -263,19 +242,19 @@ class RuleBasedIdentifier:
         elif script_expectation and dominant_script and dominant_script != script_expectation:
             score -= 4.0
 
-        special_chars = LANGUAGE_SPECIAL_CHARACTERS.get(language, "")
-        if special_chars:
-            char_hits = sum(text.count(char) for char in special_chars)
-            score += char_hits * 1.2
+        keyword_hits = self._keyword_hits(text, language)
+        score += keyword_hits * 1.0
 
-        keywords = LANGUAGE_KEYWORDS.get(language, ())
-        if keywords:
-            keyword_hits = sum(text.lower().count(keyword.strip()) for keyword in keywords)
-            score += keyword_hits * 0.8
+        diacritic_hits = self._diacritic_hits(text, language)
+        score += diacritic_hits * 1.2
+
+        stop_ratio = self._stopword_ratio(text, language)
+        score += stop_ratio * 1.5
 
         # Penalise languages that rely on diacritics when the sentence uses only ASCII
-        if not special_chars and all(ord(c) < 128 for c in text):
-            score += 0.3
+        if not diacritic_hits and language in LANGUAGE_SPECIAL_CHARACTERS:
+            if all(ord(c) < 128 for c in text):
+                score -= 0.5
         return score
 
     def predict(self, texts: Sequence[str]) -> List[str]:
@@ -288,146 +267,6 @@ class RuleBasedIdentifier:
             best_label = max(scores.items(), key=lambda item: item[1])[0]
             predictions.append(best_label)
         return predictions
-
-
-# ---------------------------------------------------------------------------
-# Machine learning baseline (character n-gram logistic regression)
-# ---------------------------------------------------------------------------
-
-
-def build_logistic_regression_pipeline() -> Pipeline:
-    vectorizer = TfidfVectorizer(
-        analyzer="char",
-        ngram_range=(3, 5),
-        lowercase=True,
-        min_df=2,
-    )
-    classifier = LogisticRegression(max_iter=1000, solver="lbfgs", multi_class="auto")
-    return Pipeline([("vectorizer", vectorizer), ("classifier", classifier)])
-
-
-# ---------------------------------------------------------------------------
-# Deep learning baseline (XLM-R fine-tuning)
-# ---------------------------------------------------------------------------
-
-
-class XLMRClassifier:
-    """Fine-tunes an XLM-RoBERTa sequence classification model."""
-
-    def __init__(
-        self,
-        model_name: str = "xlm-roberta-base",
-        output_dir: Path = Path("./xlmr_language_id"),
-        num_train_epochs: float = 1.0,
-        batch_size: int = 8,
-        learning_rate: float = 2e-5,
-        weight_decay: float = 0.01,
-        seed: int = 13,
-    ) -> None:
-        if torch is None:
-            raise RuntimeError(
-                "The transformers baseline requires PyTorch and transformers to be installed."
-            )
-        self.model_name = model_name
-        self.output_dir = output_dir
-        self.num_train_epochs = num_train_epochs
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-        self.seed = seed
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.label2id: Dict[str, int] = {}
-        self.id2label: Dict[int, str] = {}
-        self.model: Optional[AutoModelForSequenceClassification] = None
-
-    def _encode_dataset(self, dataset: Dataset) -> Dataset:
-        def tokenize_function(batch: Dict[str, List[str]]) -> Dict[str, List[List[int]]]:
-            return self.tokenizer(
-                batch["text"],
-                truncation=True,
-                padding="max_length",
-                max_length=128,
-            )
-
-        return dataset.map(tokenize_function, batched=True)
-
-    def fit(
-        self,
-        train_texts: Sequence[str],
-        train_labels: Sequence[str],
-        eval_texts: Sequence[str],
-        eval_labels: Sequence[str],
-    ) -> None:
-        unique_labels = sorted(set(train_labels) | set(eval_labels))
-        self.label2id = {label: idx for idx, label in enumerate(unique_labels)}
-        self.id2label = {idx: label for label, idx in self.label2id.items()}
-
-        train_dataset = Dataset.from_dict(
-            {"text": list(train_texts), "label": [self.label2id[label] for label in train_labels]}
-        )
-        eval_dataset = Dataset.from_dict(
-            {"text": list(eval_texts), "label": [self.label2id[label] for label in eval_labels]}
-        )
-
-        encoded_train = self._encode_dataset(train_dataset)
-        encoded_eval = self._encode_dataset(eval_dataset)
-
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name,
-            num_labels=len(self.label2id),
-            label2id=self.label2id,
-            id2label=self.id2label,
-        )
-
-        # Some environments ship older ``transformers`` versions whose
-        # ``TrainingArguments`` constructor does not support the modern
-        # ``evaluation_strategy``/``logging_strategy`` flags.  Build the kwargs
-        # dynamically to stay compatible with both old and new releases.
-        args_signature = inspect.signature(TrainingArguments.__init__).parameters
-        training_kwargs = dict(
-            output_dir=str(self.output_dir),
-            num_train_epochs=self.num_train_epochs,
-            per_device_train_batch_size=self.batch_size,
-            per_device_eval_batch_size=self.batch_size,
-            learning_rate=self.learning_rate,
-            weight_decay=self.weight_decay,
-            seed=self.seed,
-        )
-
-        optional_args = {
-            "evaluation_strategy": "epoch",
-            "logging_strategy": "epoch",
-            "save_strategy": "no",
-            "load_best_model_at_end": False,
-        }
-        for name, value in optional_args.items():
-            if name in args_signature:
-                training_kwargs[name] = value
-
-        # Fall back to the legacy flag used by very old transformers releases
-        # when ``evaluation_strategy`` is unavailable.
-        if "evaluation_strategy" not in training_kwargs and "evaluate_during_training" in args_signature:
-            training_kwargs["evaluate_during_training"] = True
-
-        training_args = TrainingArguments(**training_kwargs)
-
-        trainer = Trainer(
-            model=self.model,
-            args=training_args,
-            train_dataset=encoded_train,
-            eval_dataset=encoded_eval,
-        )
-        trainer.train()
-        self.trainer = trainer
-
-    def predict(self, texts: Sequence[str]) -> List[str]:
-        if self.model is None:
-            raise RuntimeError("The model has not been trained yet.")
-        dataset = Dataset.from_dict({"text": list(texts)})
-        encoded_dataset = self._encode_dataset(dataset)
-        predictions = self.trainer.predict(encoded_dataset).predictions
-        predicted_ids = predictions.argmax(axis=-1)
-        return [self.id2label[idx] for idx in predicted_ids]
 
 
 # ---------------------------------------------------------------------------
@@ -524,49 +363,19 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--test-size",
         type=float,
         default=0.2,
-        help="Proportion of the data set aside for the held-out test set (default: 0.2).",
+        help="Proportion of the dataset to allocate to the test split.",
     )
     parser.add_argument(
         "--validation-size",
         type=float,
-        default=0.1,
-        help="Proportion of the training data reserved for validation when training the transformer.",
+        default=0.0,
+        help="Unused placeholder kept for compatibility; validation is not needed for the rule-based model.",
     )
     parser.add_argument(
         "--random-seed",
         type=int,
         default=13,
-        help="Random seed used for shuffling and model initialisation.",
-    )
-    parser.add_argument(
-        "--xlmr-output-dir",
-        type=Path,
-        default=Path("./xlmr_language_id"),
-        help="Directory used by the XLM-R Trainer to store checkpoints and logs.",
-    )
-    parser.add_argument(
-        "--xlmr-epochs",
-        type=float,
-        default=1.0,
-        help="Number of fine-tuning epochs for the XLM-R baseline (default: 1).",
-    )
-    parser.add_argument(
-        "--xlmr-batch-size",
-        type=int,
-        default=8,
-        help="Per-device batch size for XLM-R training and evaluation.",
-    )
-    parser.add_argument(
-        "--xlmr-learning-rate",
-        type=float,
-        default=2e-5,
-        help="Learning rate for XLM-R fine-tuning.",
-    )
-    parser.add_argument(
-        "--xlmr-weight-decay",
-        type=float,
-        default=0.01,
-        help="Weight decay for XLM-R fine-tuning.",
+        help="Random seed for dataset shuffling and splits.",
     )
     parser.add_argument(
         "--output-report",
@@ -598,54 +407,6 @@ def evaluate_rule_based(
     metrics = summarise_metrics(test_labels, predictions, labels)
     misclassifications = collect_misclassifications(test_texts, test_labels, predictions)
     return BaselineResult("Rule-based heuristics", metrics, misclassifications)
-
-
-def evaluate_logistic_regression(
-    train_texts: Sequence[str],
-    train_labels: Sequence[str],
-    test_texts: Sequence[str],
-    test_labels: Sequence[str],
-) -> BaselineResult:
-    LOGGER.info("Training character n-gram logistic regression")
-    pipeline = build_logistic_regression_pipeline()
-    pipeline.fit(train_texts, train_labels)
-    predictions = pipeline.predict(test_texts)
-    labels = sorted(set(train_labels) | set(test_labels))
-    metrics = summarise_metrics(test_labels, predictions, labels)
-    misclassifications = collect_misclassifications(test_texts, test_labels, predictions)
-    return BaselineResult("Char n-gram logistic regression", metrics, misclassifications)
-
-
-def evaluate_xlmr(
-    train_texts: Sequence[str],
-    train_labels: Sequence[str],
-    val_texts: Sequence[str],
-    val_labels: Sequence[str],
-    test_texts: Sequence[str],
-    test_labels: Sequence[str],
-    args: argparse.Namespace,
-) -> BaselineResult:
-    if torch is None:
-        raise RuntimeError(
-            "PyTorch and transformers are required for the XLM-R baseline. "
-            "Install the optional dependencies with `pip install -r requirements-transformers.txt`."
-        )
-    LOGGER.info("Fine-tuning XLM-R model")
-    classifier = XLMRClassifier(
-        model_name="xlm-roberta-base",
-        output_dir=args.xlmr_output_dir,
-        num_train_epochs=args.xlmr_epochs,
-        batch_size=args.xlmr_batch_size,
-        learning_rate=args.xlmr_learning_rate,
-        weight_decay=args.xlmr_weight_decay,
-        seed=args.random_seed,
-    )
-    classifier.fit(train_texts, train_labels, val_texts, val_labels)
-    predictions = classifier.predict(test_texts)
-    labels = sorted(set(train_labels) | set(test_labels))
-    metrics = summarise_metrics(test_labels, predictions, labels)
-    misclassifications = collect_misclassifications(test_texts, test_labels, predictions)
-    return BaselineResult("XLM-R fine-tuning", metrics, misclassifications)
 
 
 # ---------------------------------------------------------------------------
@@ -682,30 +443,6 @@ def print_results(result: BaselineResult, labels: Sequence[str]) -> None:
                 print(f"    predicted {predicted_label:<10} :: {snippet}")
 
 
-def compare_models(results: Sequence[BaselineResult]) -> None:
-    print("\n" + "#" * 80)
-    print("Model comparison and qualitative notes")
-    print("#" * 80)
-    print("\nAccuracy overview:")
-    for result in results:
-        accuracy = result.metrics.get("accuracy", 0.0)
-        print(f"- {result.name:<35} {accuracy:.4f}")
-    print(
-        "\nOperational trade-offs:\n"
-        "* Rule-based heuristics: extremely cheap to run and interpretable, but they\n"
-        "  depend on linguistic expertise to curate the cues and struggle to scale to\n"
-        "  language families that share scripts or borrow vocabulary.\n"
-        "* Char n-gram logistic regression: inexpensive to train and requires little\n"
-        "  feature engineering. It scales to new languages as long as labelled data\n"
-        "  is available, though it cannot leverage sub-word semantics beyond n-gram\n"
-        "  statistics.\n"
-        "* XLM-R fine-tuning: delivers the strongest accuracy in most scenarios and\n"
-        "  generalises across scripts thanks to multilingual pretraining. The trade-off\n"
-        "  is substantially higher computational cost and a dependency on GPU\n"
-        "  resources, which may be prohibitive for rapid experimentation.\n"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -739,68 +476,20 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         stratify=labels,
     )
 
-    if args.validation_size > 0:
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train,
-            y_train,
-            test_size=args.validation_size,
-            random_state=args.random_seed,
-            stratify=y_train,
-        )
-    else:
-        X_val, y_val = X_test, y_test
-
     ordered_labels = sorted(set(labels))
 
-    results: List[BaselineResult] = []
-    results.append(evaluate_rule_based(X_train, y_train, X_test, y_test))
-    results.append(evaluate_logistic_regression(X_train, y_train, X_test, y_test))
-
-    if torch is not None:
-        try:
-            results.append(
-                evaluate_xlmr(
-                    X_train,
-                    y_train,
-                    X_val,
-                    y_val,
-                    X_test,
-                    y_test,
-                    args,
-                )
-            )
-        except RuntimeError as exc:
-            LOGGER.warning("Skipping XLM-R baseline: %s", exc)
-    else:
-        if TRANSFORMERS_IMPORT_ERROR:
-            LOGGER.warning(
-                "PyTorch/transformers not available; skipping XLM-R baseline. "
-                "Install the optional dependencies with `pip install -r requirements-transformers.txt`.",
-                exc_info=TRANSFORMERS_IMPORT_ERROR,
-            )
-        else:
-            LOGGER.warning(
-                "PyTorch/transformers not available; skipping XLM-R baseline. "
-                "Install the optional dependencies with `pip install -r requirements-transformers.txt`."
-            )
-
-    for result in results:
-        print_results(result, ordered_labels)
-
-    compare_models(results)
+    result = evaluate_rule_based(X_train, y_train, X_test, y_test)
+    print_results(result, ordered_labels)
 
     if args.output_report:
         LOGGER.info("Writing report to %s", args.output_report)
-        serialisable_results = []
-        for result in results:
-            serialisable_results.append(
-                {
-                    "name": result.name,
-                    "metrics": result.metrics,
-                    "misclassifications": result.misclassifications,
-                }
-            )
-        args.output_report.write_text(json.dumps(serialisable_results, indent=2, ensure_ascii=False), encoding="utf8")
+        serialisable_result = {
+            "name": result.name,
+            "metrics": result.metrics,
+            "misclassifications": result.misclassifications,
+        }
+        args.output_report.write_text(json.dumps(serialisable_result, indent=2, ensure_ascii=False), encoding="utf8")
+
 
 if __name__ == "__main__":
     # Detect whether the script was launched inside a Jupyter notebook. In that
