@@ -1,7 +1,7 @@
 # Milestone 2 overview and reproduction guide
 
 This project bundles several baselines for multilingual language identification. The
-refactored implementation lives under `scripts/language_id_baselines/` and mirrors the
+modular implementation lives under `scripts/language_id_baselines/` and mirrors the
 behaviour documented in `reports/Milestone 2 run.md`.
 
 ## High-level structure
