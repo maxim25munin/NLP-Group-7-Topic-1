@@ -1,4 +1,4 @@
-# Language identification baselines (refactored)
+# Language identification baselines
 
 This package breaks down the original monolithic `evaluate_language_id_baselines.py` script
 into focused modules that handle data loading, baseline implementations, evaluation
