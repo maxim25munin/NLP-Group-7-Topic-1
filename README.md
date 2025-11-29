@@ -35,6 +35,11 @@ pip install -r requirements-transformers.txt
 The script automatically skips the deep-learning baseline when the dependencies
 are unavailable.
 
+If you encounter Windows-specific build errors while installing spaCy (e.g. a
+`WinError 2` while compiling the `blis` dependency), see
+[`docs/windows_spacy_install.md`](docs/windows_spacy_install.md) for a quick
+fix using binary wheels and the required toolchain options.
+
 For a full description of the experimental setup and findings, see the
 Milestone 2 report in [`reports/milestone2_report.md`](reports/milestone2_report.md).
 
