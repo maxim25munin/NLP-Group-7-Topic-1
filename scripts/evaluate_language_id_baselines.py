@@ -26,12 +26,22 @@ import math
 import os
 import inspect
 import random
+import re
 import textwrap
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
+
+try:
+    import spacy
+except Exception as exc:  # pragma: no cover - external dependency
+    raise SystemExit(
+        "spaCy is required to run the rule-based evaluation script. "
+        "Install it via `pip install spacy`."
+    ) from exc
 
 try:  # Optional dependency used by the logistic regression baseline
     from sklearn.linear_model import LogisticRegression
@@ -201,14 +211,14 @@ LANGUAGE_SPECIAL_CHARACTERS: Dict[str, str] = {
 }
 
 LANGUAGE_KEYWORDS: Dict[str, Tuple[str, ...]] = {
-    "german": (" und ", " der ", " die ", " nicht "),
-    "english": (" the ", " and ", " is ", " was "),
-    "french": (" le ", " la ", " les ", " des "),
-    "swedish": (" och ", " det ", " som ", " inte "),
-    "latvian": (" un ", " kas ", " par ", " ar "),
-    "swahili": (" ya ", " kwa ", " na ", " cha "),
-    "wolof": (" ci ", " ak ", " la ", " nga "),
-    "yoruba": (" ni ", " ati ", " ṣe ", " jẹ "),
+    "german": ("und", "der", "die", "nicht"),
+    "english": ("the", "and", "is", "was"),
+    "french": ("le", "la", "les", "des"),
+    "swedish": ("och", "det", "som", "inte"),
+    "latvian": ("un", "kas", "par", "ar"),
+    "swahili": ("ya", "kwa", "na", "cha"),
+    "wolof": ("ci", "ak", "la", "nga"),
+    "yoruba": ("ni", "ati", "ṣe", "jẹ"),
 }
 
 LANGUAGE_SCRIPTS: Dict[str, str] = {
@@ -216,12 +226,40 @@ LANGUAGE_SCRIPTS: Dict[str, str] = {
     "urdu": "Arabic",
 }
 
+LANGUAGE_SPACY_CODES: Dict[str, str] = {
+    "german": "de",
+    "english": "en",
+    "french": "fr",
+    "swedish": "sv",
+    "latvian": "lv",
+    "swahili": "sw",
+    "wolof": "wo",
+    "yoruba": "yo",
+    "kazakh": "kk",
+    "urdu": "ur",
+}
+
 
 class RuleBasedIdentifier:
-    """Heuristic classifier for language identification."""
+    """Heuristic classifier for language identification using spaCy and regex."""
 
     def __init__(self) -> None:
         self.priors: Dict[str, float] = {}
+        self._nlp_cache: Dict[str, spacy.language.Language] = {}
+        self._stopword_cache: Dict[str, Set[str]] = {}
+        self.top_tokens: Dict[str, Set[str]] = {}
+        self.keyword_patterns: Dict[str, List[re.Pattern[str]]] = {
+            language: [
+                re.compile(rf"\b{re.escape(keyword)}\b", flags=re.IGNORECASE)
+                for keyword in keywords
+            ]
+            for language, keywords in LANGUAGE_KEYWORDS.items()
+        }
+        self.diacritic_patterns: Dict[str, re.Pattern[str]] = {
+            language: re.compile(f"[{re.escape(chars)}]")
+            for language, chars in LANGUAGE_SPECIAL_CHARACTERS.items()
+            if chars
+        }
 
     @staticmethod
     def _dominant_script(text: str) -> Optional[str]:
@@ -248,10 +286,47 @@ class RuleBasedIdentifier:
         script, _ = counts.most_common(1)[0]
         return script
 
+    def _get_nlp(self, language: str) -> spacy.language.Language:
+        code = LANGUAGE_SPACY_CODES.get(language, "xx")
+        if code not in self._nlp_cache:
+            try:
+                nlp = spacy.blank(code)
+            except Exception:
+                nlp = spacy.blank("xx")
+            self._nlp_cache[code] = nlp
+        return self._nlp_cache[code]
+
+    def _stopword_ratio(self, text: str, language: str) -> float:
+        stopwords = self._language_stopwords(language)
+        tokens = [token.lower() for token in re.findall(r"\b\w+\b", text)]
+        if not tokens:
+            return 0.0
+        stopword_hits = sum(token in stopwords for token in tokens)
+        return stopword_hits / len(tokens)
+
+    def _keyword_hits(self, text: str, language: str) -> int:
+        patterns = self.keyword_patterns.get(language, [])
+        return sum(len(pattern.findall(text)) for pattern in patterns)
+
+    def _diacritic_hits(self, text: str, language: str) -> int:
+        pattern = self.diacritic_patterns.get(language)
+        if not pattern:
+            return 0
+        return len(pattern.findall(text))
+
     def fit(self, texts: Sequence[str], labels: Sequence[str]) -> None:
         label_counts = Counter(labels)
         total = sum(label_counts.values())
         self.priors = {label: count / total for label, count in label_counts.items()}
+
+        token_counts: Dict[str, Counter[str]] = defaultdict(Counter)
+        for text, label in zip(texts, labels):
+            tokens = [t.lower() for t in re.findall(r"\b\w+\b", text) if len(t) > 1]
+            token_counts[label].update(tokens)
+
+        self.top_tokens = {
+            label: {token for token, _ in counter.most_common(40)} for label, counter in token_counts.items()
+        }
 
     def _score_language(self, text: str, language: str) -> float:
         score = math.log(self.priors.get(language, 1e-6))
@@ -263,20 +338,51 @@ class RuleBasedIdentifier:
         elif script_expectation and dominant_script and dominant_script != script_expectation:
             score -= 4.0
 
-        special_chars = LANGUAGE_SPECIAL_CHARACTERS.get(language, "")
-        if special_chars:
-            char_hits = sum(text.count(char) for char in special_chars)
-            score += char_hits * 1.2
+        keyword_hits = self._keyword_hits(text, language)
+        score += keyword_hits * 1.0
 
-        keywords = LANGUAGE_KEYWORDS.get(language, ())
-        if keywords:
-            keyword_hits = sum(text.lower().count(keyword.strip()) for keyword in keywords)
-            score += keyword_hits * 0.8
+        diacritic_hits = self._diacritic_hits(text, language)
+        score += diacritic_hits * 1.2
+
+        stop_ratio = self._stopword_ratio(text, language)
+        score += stop_ratio * 2.0
+
+        overlap_score = self._token_overlap(text, language)
+        score += overlap_score * 1.2
 
         # Penalise languages that rely on diacritics when the sentence uses only ASCII
-        if not special_chars and all(ord(c) < 128 for c in text):
-            score += 0.3
+        if not diacritic_hits and language in LANGUAGE_SPECIAL_CHARACTERS:
+            if all(ord(c) < 128 for c in text):
+                score -= 0.5
         return score
+
+    def _language_stopwords(self, language: str) -> Set[str]:
+        if language in self._stopword_cache:
+            return self._stopword_cache[language]
+
+        code = LANGUAGE_SPACY_CODES.get(language, "")
+        stopwords: Set[str] = set()
+        if code:
+            try:
+                module = import_module(f"spacy.lang.{code}")
+                if hasattr(module, "STOP_WORDS"):
+                    stopwords = set(getattr(module, "STOP_WORDS"))
+            except Exception:
+                stopwords = set()
+        self._stopword_cache[language] = stopwords
+        return stopwords
+
+    def _token_overlap(self, text: str, language: str) -> float:
+        """Return fraction of tokens appearing in the language's frequent vocabulary."""
+
+        vocab = self.top_tokens.get(language)
+        if not vocab:
+            return 0.0
+        tokens = [token.lower() for token in re.findall(r"\b\w+\b", text)]
+        if not tokens:
+            return 0.0
+        hits = sum(token in vocab for token in tokens)
+        return hits / len(tokens)
 
     def predict(self, texts: Sequence[str]) -> List[str]:
         predictions = []
