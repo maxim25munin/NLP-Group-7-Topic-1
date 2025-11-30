@@ -45,6 +45,21 @@ except Exception as exc:  # pragma: no cover - optional dependency
         "Please install it via `pip install scikit-learn`."
     ) from exc
 
+try:  # Optional dependency used for pretty confusion matrices
+    import pandas as pd
+except Exception as exc:  # pragma: no cover - optional dependency
+    raise SystemExit("pandas is required to render pretty confusion matrices.") from exc
+
+try:  # Optional dependency used for pretty confusion matrices
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
+    from pretty_confusion_matrix import pp_matrix
+except Exception as exc:  # pragma: no cover - optional dependency
+    raise SystemExit(
+        "matplotlib and pretty_confusion_matrix are required to render pretty "
+        "confusion matrices."
+    ) from exc
+
 LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -456,6 +471,36 @@ def evaluate_rule_based(
 # ---------------------------------------------------------------------------
 
 
+def render_pretty_confusion_matrix(
+    confusion: Sequence[Sequence[int]], labels: Sequence[str], title: str
+) -> Path:
+    """Render and save a prettified confusion matrix heatmap.
+
+    The output image is stored under ``reports/`` with a slugified version of
+    the baseline name to make locating the visualisation straightforward.
+    """
+
+    reports_dir = Path("reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    slug = "".join(ch.lower() if ch.isalnum() else "_" for ch in title).strip("_")
+    slug = slug or "baseline"
+    output_path = reports_dir / f"confusion_matrix_{slug}.png"
+
+    df_cm = pd.DataFrame(confusion, index=labels, columns=labels)
+    plt.figure(figsize=(8, 6))
+    pp_matrix(df_cm, cmap="PuRd", figsize=(8, 6), fz=7)
+    ax = plt.gca()
+    white = to_rgba("white")
+    for text in ax.texts:
+        if to_rgba(text.get_color()) == white:
+            text.set_color("black")
+    plt.title(f"Confusion matrix: {title}")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+    return output_path
+
+
 def print_results(result: BaselineResult, labels: Sequence[str]) -> None:
     accuracy = result.metrics.get("accuracy", 0.0)
     print("\n" + "=" * 80)
@@ -474,6 +519,8 @@ def print_results(result: BaselineResult, labels: Sequence[str]) -> None:
         for label, row in zip(labels, confusion):
             values = " ".join(f"{value:<10}" for value in row)
             print(f"{label:<12}{values}")
+        pretty_path = render_pretty_confusion_matrix(confusion, labels, result.name)
+        print(f"Saved prettified confusion matrix to {pretty_path}")
     if result.misclassifications:
         print("\nRepresentative misclassifications:")
         for gold_label in labels:
