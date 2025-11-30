@@ -1,6 +1,6 @@
-# Milestone 2: Multilingual Language Identification Baselines
+# Milestone 2: Multilingual Language Identification Baselines. Modular Script
 
-This milestone refactors the original monolithic evaluator (`scripts/evaluate_language_id_baselines.py`) into a modular package under `scripts/refactored_language_id_baselines/` while preserving behaviour. The refactor clarifies how data flows through the heuristics, classical ML, and transformer-based baselines.
+This document shows how the original monolithic evaluator (`scripts/evaluate_language_id_baselines.py`) is refactored into a modular package under `scripts/refactored_language_id_baselines/` while preserving behaviour. The refactor clarifies how data flows through the heuristics, classical ML, and transformer-based baselines.
 
 ## File structure
 
