@@ -1,7 +1,7 @@
 # Milestone 2 Report: Multilingual Language Identification
 
 ## Experimental setup
-- **Task**: sentence-level language identification across 10 language/domain labels spanning Latin and Cyrillic scripts.
+- **Task**: sentence-level language identification across 10 language/domain labels spanning Latin and Cyrillic scripts: `german`: de, `english`: en, `french`: fr, `swedish`: sv, `latvian`: lv, `swahili`: sw, `wolof`: wo, `yoruba`: yo, `kazakh`: kk, `urdu`: ur.
 - **Data**: multilingual Wikipedia snippets preprocessed with Stanza using `scripts/prepare_multilingual_conllu_stanza.py`, with 4,000 held-out sentences (400 per label) for evaluation.
 - **Baselines evaluated** via `scripts/evaluate_language_id_baselines.py`:
   1. **Rule-based heuristics** using Unicode script detection, diacritics, and curated cue words and affixes.
