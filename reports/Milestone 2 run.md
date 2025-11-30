@@ -90,35 +90,35 @@
     ================================================================================
     Results for Rule-based heuristics
     ================================================================================
-    Accuracy: 0.1000
+    Accuracy: 0.8925
     
     Classification report:
     label           precision  recall  f1-score  support
-    english heuristic     0.000   0.000    0.000      400
-    french stanza       0.000   0.000    0.000      400
-    german heuristic     0.100   1.000    0.182      400
-    kazakh stanza       0.000   0.000    0.000      400
-    latvian stanza      0.000   0.000    0.000      400
-    swahili heuristic     0.000   0.000    0.000      400
-    swedish stanza      0.000   0.000    0.000      400
-    urdu stanza         0.000   0.000    0.000      400
-    wolof stanza        0.000   0.000    0.000      400
-    yoruba heuristic     0.000   0.000    0.000      400
-    macro avg           0.010   0.100    0.018     4000
-    weighted avg        0.010   0.100    0.018     4000
+    english heuristic     0.861   0.915    0.887      400
+    french stanza       0.973   0.910    0.941      400
+    german heuristic     0.552   0.993    0.710      400
+    kazakh stanza       1.000   0.695    0.820      400
+    latvian stanza      0.997   0.877    0.934      400
+    swahili heuristic     0.994   0.870    0.928      400
+    swedish stanza      0.921   0.907    0.914      400
+    urdu stanza         1.000   0.980    0.990      400
+    wolof stanza        0.997   0.915    0.954      400
+    yoruba heuristic     0.989   0.863    0.921      400
+    macro avg           0.929   0.893    0.900     4000
+    weighted avg        0.929   0.892    0.900     4000
     
     Confusion matrix (rows = gold, columns = predicted):
                 english heuristic french stanza german heuristic kazakh stanza latvian stanza swahili heuristic swedish stanza urdu stanza wolof stanza yoruba heuristic
-    english heuristic0          0          400        0          0          0          0          0          0          0         
-    french stanza0          0          400        0          0          0          0          0          0          0         
-    german heuristic0          0          400        0          0          0          0          0          0          0         
-    kazakh stanza0          0          400        0          0          0          0          0          0          0         
-    latvian stanza0          0          400        0          0          0          0          0          0          0         
-    swahili heuristic0          0          400        0          0          0          0          0          0          0         
-    swedish stanza0          0          400        0          0          0          0          0          0          0         
-    urdu stanza 0          0          400        0          0          0          0          0          0          0         
-    wolof stanza0          0          400        0          0          0          0          0          0          0         
-    yoruba heuristic0          0          400        0          0          0          0          0          0          0         
+    english heuristic366        1          32         0          0          0          1          0          0          0         
+    french stanza3          364        14         0          0          0          19         0          0          0         
+    german heuristic1          2          397        0          0          0          0          0          0          0         
+    kazakh stanza3          0          118        278        0          0          0          0          1          0         
+    latvian stanza2          0          40         0          351        0          7          0          0          0         
+    swahili heuristic14         1          33         0          1          348        1          0          0          2         
+    swedish stanza2          1          33         0          0          0          363        0          0          1         
+    urdu stanza 3          0          5          0          0          0          0          392        0          0         
+    wolof stanza4          4          22         0          0          1          2          0          366        1         
+    yoruba heuristic27         1          25         0          0          1          1          0          0          345        
     
 
 
@@ -127,7 +127,7 @@
 
 
     
-![png](output_0_11.png)
+![png](output_0_3.png)
     
 
 
@@ -136,31 +136,34 @@
     Representative misclassifications:
     - Gold label english heuristic:
         predicted german heuristic :: University of Chicago Press, 1953 Harry Kalven Jr.
-        predicted german heuristic :: Benjamin Mark Seymour (born 16 April 1999) is an English professional footballer who plays as a forward for National League South club Hampton & Richmond Borough.
+        predicted german heuristic :: Author Stephen J.
     - Gold label french stanza:
-        predicted german heuristic :: Références Bibliographie Ignacio URÍA, Viento norte.
-        predicted german heuristic :: Entre-temps, KB Saliout fusionne avec l'usine Khrounitchev pour former le GKNPZ Khrounitchev.
+        predicted english heuristic :: Discographie The Wrestling Album (1985) Piledriver - The Wrestling Album 2 (1987) WWF Full Metal (1996) WWF The Music, Vol. 2 (1997) (1997) WWF The Music, Vol. 3 (1998) WWF The…
+        predicted swedish stanza :: Personnage de fiction
+    - Gold label german heuristic:
+        predicted english heuristic :: 2021: Innigkeit – by Patrizia Bach & Regina Dürig, in: Lexicon for Untranslatable Cultural Practices – Jubilee Publication of „Akademie Schloss Solitude“, with an introduction by…
+        predicted french stanza :: Versión Abreviada del informe final de la Comisión de la Verdad y Reconciliación – Perú (Kurzversion des Abschlussberichts) Un pasado de violencia, un futuro de paz 1980–200020…
     - Gold label kazakh stanza:
-        predicted german heuristic :: Дереккөздер География және геодезия
-        predicted german heuristic :: 14-16 ғ. көптеген мемлекеттерде ордендер мен медальдар жасала бастады.
+        predicted german heuristic :: Теңіз деңгейінен ең жоғары нүктесі – 315 м. (116 коммунаның ішінде 108 орын), ең төменгі – 133 м. (2 место из 116 коммун).
+        predicted german heuristic :: Әсіресе асқарлы асуының шығысында соғыста көзге түскен.
     - Gold label latvian stanza:
-        predicted german heuristic :: Platons bieži tiek minēts kā visbagātākais informācijas avots par Sokrata dzīvi un filozofiju.
-        predicted german heuristic :: Barību meklē uz ūdensaugiem, gan augošiem ūdenī, gan krastā.
+        predicted german heuristic :: 20. oktobrī franči Damaskā ievieš ārkārtas stāvokli.
+        predicted german heuristic :: Ietekas: Klauce, Bruģupīte.
     - Gold label swahili heuristic:
-        predicted german heuristic :: Tazama pia Orodha ya visiwa vya Tanzania Tanbihi Viungo vya nje Geonames.org Visiwa vya Tanzania Ziwa Viktoria Mkoa wa Kagera
-        predicted german heuristic :: Kata ya Naipanga imeundwa na vijiji vinne (4) ambavyo ni Naipanga, Joshoni, Congo na Nagaga.
+        predicted german heuristic :: Oppenheimer, J.R.
+        predicted german heuristic :: Maria T.
     - Gold label swedish stanza:
-        predicted german heuristic :: Källor Berg i Litauen
-        predicted german heuristic :: Fotboll, konditionsträning och jogging har varit de huvudsakliga sportintressena i hans liv.
+        predicted german heuristic :: Bibliografi Kalla mig Amanda, Bokförlaget SOL 2017
+        predicted german heuristic :: Valkretsen skapades 2010.
     - Gold label urdu stanza:
-        predicted german heuristic :: پھر جب اٹھارہ سو ستاون کی جنگ آزادی واقع ہوئی تب نواب بھوپال نے اپنی ریاست میں امن و امان قائم رکھنے کے لیےانگریزی فوج کا ساتھ دیا ،
-        predicted german heuristic :: انہوں نے کہا کہ شرکت کرنے والی ٹیمیں لاہور لائنز، پشاور ڈیرز، کراچی ڈولفنز، کوئٹہ پینتھرز اور اسلام آباد شاہین شامل ہیں۔
+        predicted german heuristic :: تاج الاقبال تاریخ ریاست بھوپال۔ بندیل کھنڈ از پنڈت کشن نرائن۔
+        predicted english heuristic :: حر کیمیاء Short description is different from Wikidata
     - Gold label wolof stanza:
         predicted german heuristic :: Bañ a nelaw guddi
-        predicted german heuristic :: Bamu mujj di ku xarañe bépp xam-xamu Lislaam, te it di kuy jëfe ngirum Tassawuuf ci anam gu xóot, Jigéen ci lislaam:
+        predicted english heuristic :: Xayma nañu ni garab yooyu muccal nañu 50 miliyoŋi xale ci 25 at yii weesu.
     - Gold label yoruba heuristic:
-        predicted german heuristic :: Ní ọdún 2014, Boafo kópa nínu eré oníṣókí kan tí àkọ́lé rẹ̀ jẹ́ Bus Nut.
-        predicted german heuristic :: Iṣẹ́ orílẹ̀-ède Nàìjíríà Arábìnrin náà gbá bọ́ọ̀lù fún ikọ̀ agbábọ́ọ̀lù sínú agbọ̀n ti àwọn obìnrin First Bank ti orílẹ̀-ède Nàìjíríà ti ìlú Èkó tí a mọ̀ sí Elephant Girls nígbà…
+        predicted english heuristic :: This could be determined by the kind of job this person does or wealth.
+        predicted german heuristic :: Lehnigk, On the Hurwitz matrix, Zeitschrift für Angewandte Mathematik und Physik (ZAMP), May 1970 Bernard A.
     
     ================================================================================
     Results for Char n-gram logistic regression
@@ -311,7 +314,7 @@
     ################################################################################
     
     Accuracy overview:
-    - Rule-based heuristics               0.1000
+    - Rule-based heuristics               0.8925
     - Char n-gram logistic regression     0.9677
     - XLM-R fine-tuning                   0.9663
     
