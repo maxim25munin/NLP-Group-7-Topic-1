@@ -35,3 +35,6 @@
 - **Adopt the char n-gram logistic regression** as the primary baseline: it edges out XLM-R in accuracy while remaining cheap and simple to deploy.
 - **Use XLM-R selectively** for settings with extreme domain shift or code-switching where transfer learning benefits may justify the compute overhead.
 - **Iterate on the rule-based system** as a fallback validator: its interpretability is valuable for rapid diagnostics, but it needs richer cues (e.g., character bigrams for Cyrillic) to avoid over-predicting German on transliterated text.
+
+## Refactored Script
+To improve the code readability, the original monolithic evaluator `scripts/evaluate_language_id_baselines.py` is refactored into a modular package under `scripts/refactored_language_id_baselines/` while preserving behaviour. The refactor clarifies how data flows through the heuristics, classical ML, and transformer-based baselines.
