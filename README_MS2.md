@@ -3,10 +3,11 @@
 ## Experimental setup
 - **Task**: sentence-level language identification across 10 language/domain labels spanning Latin and Cyrillic scripts.
 - **Data**: multilingual Wikipedia snippets preprocessed with Stanza using `scripts/prepare_multilingual_conllu.py`, with 4,000 held-out sentences (400 per label) for evaluation.
-- **Baselines evaluated** via `scripts/evaluate_language_id_baselines.py`, code runtime is documented in `reports/Milestone 2 run.md`:
+- **Baselines evaluated** via `scripts/evaluate_language_id_baselines.py`:
   1. **Rule-based heuristics** using Unicode script detection, diacritics, and curated cue words and affixes.
   2. **Character n-gram logistic regression** with TF–IDF features (non-DL).
   3. **XLM-RoBERTa fine-tuning** for multilingual sequence classification (DL).
+- **Code runtime** is documented in `reports/Milestone 2 run.md`.
 
 ## Quantitative results
 | Model | Accuracy | Macro Precision | Macro Recall | Macro F1 |
