@@ -60,11 +60,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+KNOWN_TRAILING_TAGS = {"propaganda", "radicalization", "recruitment"}
+
+
 def strip_trailing_english_tags(text: str) -> str:
-    """Remove trailing ASCII-only tokens that act like annotation tags."""
+    """Remove trailing annotation tags without dropping ordinary English words."""
 
     tokens: List[str] = text.strip().split()
-    while tokens and tokens[-1].isascii() and tokens[-1].isalpha():
+    while tokens and tokens[-1].lower() in KNOWN_TRAILING_TAGS:
         tokens.pop()
     return " ".join(tokens)
 
