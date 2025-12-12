@@ -12,7 +12,7 @@ import argparse
 import gzip
 import shutil
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 DEFAULT_MODEL_URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.wo.300.bin.gz"
 DEFAULT_OUTPUT_DIR = Path("data/wolof")
@@ -33,7 +33,8 @@ def download_file(url: str, destination: Path, chunk_size: int = 1024 * 1024) ->
         Number of bytes to read per iteration while streaming the download.
     """
 
-    with urlopen(url) as response, destination.open("wb") as output_file:
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(request) as response, destination.open("wb") as output_file:
         while True:
             chunk = response.read(chunk_size)
             if not chunk:
