@@ -12,9 +12,11 @@ import argparse
 import gzip
 import shutil
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DEFAULT_MODEL_URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.wo.300.bin.gz"
+DEFAULT_FALLBACK_URL = "https://huggingface.co/fasttext/cc.wo.300/resolve/main/cc.wo.300.bin.gz"
 DEFAULT_OUTPUT_DIR = Path("data/wolof")
 DEFAULT_ARCHIVE_NAME = "cc.wo.300.bin.gz"
 DEFAULT_MODEL_NAME = "cc.wo.300.bin"
@@ -34,12 +36,24 @@ def download_file(url: str, destination: Path, chunk_size: int = 1024 * 1024) ->
     """
 
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(request) as response, destination.open("wb") as output_file:
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
-            output_file.write(chunk)
+    try:
+        with urlopen(request) as response, destination.open("wb") as output_file:
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+                output_file.write(chunk)
+    except HTTPError as http_error:  # pragma: no cover - network dependent
+        destination.unlink(missing_ok=True)
+        message = (
+            f"HTTP error {http_error.code} when downloading from {url}. "
+            "If the default fastText host is temporarily unavailable, try the "
+            "Hugging Face mirror with `--url \"%s\"`." % DEFAULT_FALLBACK_URL
+        )
+        raise HTTPError(http_error.url, http_error.code, message, http_error.hdrs, http_error.fp)
+    except URLError as url_error:  # pragma: no cover - network dependent
+        destination.unlink(missing_ok=True)
+        raise URLError(f"Failed to download from {url}: {url_error.reason}")
 
 
 def decompress_gzip(source: Path, target: Path, buffer_size: int = 1024 * 1024) -> None:
@@ -92,7 +106,27 @@ def ensure_fasttext_model(
         return model_path
 
     print(f"Downloading Wolof fastText model from {model_url}...")
-    download_file(model_url, archive_path)
+
+    download_errors: list[str] = []
+    candidate_urls = [model_url]
+    if model_url == DEFAULT_MODEL_URL:
+        candidate_urls.append(DEFAULT_FALLBACK_URL)
+
+    for candidate_url in candidate_urls:
+        try:
+            download_file(candidate_url, archive_path)
+            break
+        except (HTTPError, URLError) as download_error:
+            download_errors.append(str(download_error))
+            print(f"Download from {candidate_url} failed: {download_error}")
+            if archive_path.exists():
+                archive_path.unlink()
+    else:
+        error_message = "\n".join(download_errors)
+        raise RuntimeError(
+            "Unable to download Wolof fastText model."
+            f" Tried: {', '.join(candidate_urls)}.\n{error_message}"
+        )
 
     print(f"Decompressing {archive_path} to {model_path}...")
     decompress_gzip(archive_path, model_path)
