@@ -8,7 +8,7 @@
 
 ## Quantitative evaluation on OOD Kazakh hate speech
 
-- **Setup.** Logistic regression trained on averaged fastText vectors from Wikipedia sentences in 10 languages; evaluated in-domain and on 10,150 OOD Kazakh hate-speech messages using the Kazakh fastText model for all OOD texts.[^setup] Missing fastText binaries for most languages further highlight practical coverage issues.
+- **Setup.** Logistic regression trained on averaged fastText vectors from Wikipedia sentences in 10 languages; evaluated in-domain and on 10,150 OOD Kazakh hate-speech messages using the Kazakh fastText model for all OOD texts.[^setup] The hate-speech dataset is sourced from the PeerJ Computer Science study on offensive language detection.[^kazakh-source] Missing fastText binaries for most languages further highlight practical coverage issues.
 - **Results.**
   - Wikipedia (ID) accuracy: **0.8293** overall, with strong Kazakh/French performance but weak Yoruba and Urdu due to vocabulary gaps.[^id-performance]
   - Kazakh hate speech (OOD) accuracy: **0.9773** using the Kazakh model, but the metric is inflated because the test set is single-language; macro precision/recall are 0.125/0.122, indicating the classifier predicts only Kazakh when out-of-distribution classes are absent.[^ood-results] A realistic multi-language OOD mix would expose larger degradation.
@@ -30,3 +30,4 @@ Use character n-gram features or contextual models (e.g., XLM-R) as baselines. I
 [^tfidf-comparison]: Comparison with Milestone TF–IDF baseline (lines 524–596) in `reports/fasttext_ood_language_id_experiment_run.md`.
 [^oov]: OOV analysis covering Wikipedia and hate-speech vocabularies (lines 601–634) in `reports/fasttext_ood_language_id_experiment_run.md`.
 [^error-examples]: Manual error analysis excerpts on short OOD posts (lines 664–701) in `reports/fasttext_ood_language_id_experiment_run.md`.
+[^kazakh-source]: Source dataset link for Kazakh hate speech: https://peerj.com/articles/cs-3027/#supplemental-information.
