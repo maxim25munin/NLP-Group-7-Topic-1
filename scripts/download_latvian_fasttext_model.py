@@ -92,7 +92,9 @@ def ensure_latvian_fasttext_model(
     return model_path
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments while tolerating unknown Jupyter flags."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",
@@ -105,7 +107,11 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MODEL_URL,
         help="Custom URL for the compressed fastText binary model.",
     )
-    return parser.parse_args()
+
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        print(f"Ignoring unrecognized arguments: {' '.join(unknown)}")
+    return args
 
 
 def main() -> None:
