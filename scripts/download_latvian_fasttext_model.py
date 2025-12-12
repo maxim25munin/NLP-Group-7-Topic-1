@@ -1,9 +1,10 @@
-"""Utility to download the pre-trained fastText Latvian binary vectors.
+"""Utility to download pre-trained fastText binary vectors.
 
-The script downloads the compressed fastText binary model for Latvian from the
-public fastText repository and decompresses it into ``data/latvian`` by
-default. It can be used directly from the command line or imported in a
-Jupyter notebook to ensure the model is available locally.
+The script downloads compressed fastText binary models from the public
+fastText repository and decompresses them into a language-specific directory
+under ``data`` by default. It supports both Latvian and Wolof models and can
+be used from the command line or imported in a Jupyter notebook to ensure the
+required model is available locally.
 """
 
 from __future__ import annotations
@@ -18,6 +19,21 @@ DEFAULT_MODEL_URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.lv
 DEFAULT_OUTPUT_DIR = Path("data/latvian")
 DEFAULT_ARCHIVE_NAME = "cc.lv.300.bin.gz"
 DEFAULT_MODEL_NAME = "cc.lv.300.bin"
+
+LANGUAGE_CONFIG = {
+    "latvian": {
+        "output_dir": Path("data/latvian"),
+        "model_url": "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.lv.300.bin.gz",
+        "archive_name": "cc.lv.300.bin.gz",
+        "model_name": "cc.lv.300.bin",
+    },
+    "wolof": {
+        "output_dir": Path("data/wolof"),
+        "model_url": "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.wo.300.bin.gz",
+        "archive_name": "cc.wo.300.bin.gz",
+        "model_name": "cc.wo.300.bin",
+    },
+}
 
 
 def download_file(url: str, destination: Path, chunk_size: int = 1024 * 1024) -> None:
@@ -48,30 +64,47 @@ def decompress_gzip(source: Path, target: Path, buffer_size: int = 1024 * 1024) 
         shutil.copyfileobj(compressed_file, binary_file, buffer_size)
 
 
-def ensure_latvian_fasttext_model(
-    output_dir: Path = DEFAULT_OUTPUT_DIR,
-    model_url: str = DEFAULT_MODEL_URL,
-    archive_name: str = DEFAULT_ARCHIVE_NAME,
-    model_name: str = DEFAULT_MODEL_NAME,
+def ensure_fasttext_model(
+    language: str = "latvian",
+    output_dir: Path | None = None,
+    model_url: str | None = None,
+    archive_name: str | None = None,
+    model_name: str | None = None,
 ) -> Path:
-    """Download and decompress the Latvian fastText binary model if missing.
+    """Download and decompress a fastText binary model for the given language.
 
     Parameters
     ----------
+    language:
+        Language key for the model. Supported values: ``latvian`` and ``wolof``.
     output_dir:
-        Directory where the downloaded archive and model will be stored.
+        Directory where the downloaded archive and model will be stored. Falls
+        back to the language default when not provided.
     model_url:
-        URL of the compressed fastText binary model.
+        URL of the compressed fastText binary model. Falls back to the language
+        default when not provided.
     archive_name:
-        Filename for the downloaded archive within ``output_dir``.
+        Filename for the downloaded archive within ``output_dir``. Falls back
+        to the language default when not provided.
     model_name:
-        Filename for the decompressed binary model within ``output_dir``.
+        Filename for the decompressed binary model within ``output_dir``. Falls
+        back to the language default when not provided.
 
     Returns
     -------
     Path
         Location of the decompressed fastText binary model.
     """
+
+    if language not in LANGUAGE_CONFIG:
+        raise ValueError(f"Unsupported language '{language}'. Supported: {', '.join(LANGUAGE_CONFIG)}")
+
+    config = LANGUAGE_CONFIG[language]
+
+    output_dir = output_dir or config["output_dir"]
+    model_url = model_url or config["model_url"]
+    archive_name = archive_name or config["archive_name"]
+    model_name = model_name or config["model_name"]
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -81,7 +114,7 @@ def ensure_latvian_fasttext_model(
     if model_path.exists():
         return model_path
 
-    print(f"Downloading Latvian fastText model from {model_url}...")
+    print(f"Downloading {language} fastText model from {model_url}...")
     download_file(model_url, archive_path)
 
     print(f"Decompressing {archive_path} to {model_path}...")
@@ -92,19 +125,40 @@ def ensure_latvian_fasttext_model(
     return model_path
 
 
+def ensure_latvian_fasttext_model(
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    model_url: str = DEFAULT_MODEL_URL,
+    archive_name: str = DEFAULT_ARCHIVE_NAME,
+    model_name: str = DEFAULT_MODEL_NAME,
+) -> Path:
+    """Backward compatible wrapper for downloading the Latvian fastText model."""
+
+    return ensure_fasttext_model(
+        language="latvian",
+        output_dir=output_dir,
+        model_url=model_url,
+        archive_name=archive_name,
+        model_name=model_name,
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments while tolerating unknown Jupyter flags."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--language",
+        choices=sorted(LANGUAGE_CONFIG.keys()),
+        default="latvian",
+        help="Language of the fastText model to download (default: latvian).",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
-        default=DEFAULT_OUTPUT_DIR,
-        help="Directory to store the downloaded model (default: data/latvian).",
+        help="Directory to store the downloaded model. Defaults to language-specific directory.",
     )
     parser.add_argument(
         "--url",
-        default=DEFAULT_MODEL_URL,
         help="Custom URL for the compressed fastText binary model.",
     )
 
@@ -116,8 +170,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    model_path = ensure_latvian_fasttext_model(output_dir=args.output_dir, model_url=args.url)
-    print(f"Latvian fastText model is available at: {model_path}")
+    model_path = ensure_fasttext_model(
+        language=args.language,
+        output_dir=args.output_dir,
+        model_url=args.url,
+    )
+    print(f"{args.language.capitalize()} fastText model is available at: {model_path}")
 
 
 if __name__ == "__main__":
