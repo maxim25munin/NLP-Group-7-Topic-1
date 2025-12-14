@@ -61,7 +61,7 @@ class DownloadedFile:
     metadata: Dict[str, str]
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Download the Urdu offensive-language dataset from Zenodo and export a "
@@ -116,7 +116,10 @@ def parse_args() -> argparse.Namespace:
             "first CSV/TSV file found in the metadata."
         ),
     )
-    return parser.parse_args()
+    parsed_args, unknown = parser.parse_known_args(args=args)
+    if unknown:
+        print(f"Ignoring unrecognised arguments: {', '.join(unknown)}")
+    return parsed_args
 
 
 def fetch_metadata(path: Optional[Path] = None) -> Dict:
