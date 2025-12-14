@@ -68,6 +68,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
             "fastText-friendly CSV containing text and label columns."
         )
     )
+    # Jupyter injects a "-f <connection-file>" argument into sys.argv when executing
+    # scripts via "%run". Accept (and ignore) it so notebooks can call main() without
+    # tripping ArgumentParser's default error handler.
+    parser.add_argument(
+        "-f",
+        dest="ipykernel_connection_file",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--output",
         type=Path,
