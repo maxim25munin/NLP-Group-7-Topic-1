@@ -222,18 +222,35 @@ def sniff_dialect(path: Path) -> csv.Dialect:
 
 
 def select_field(field_name: Optional[str], candidates: List[str], columns: List[str]) -> str:
-    if field_name:
-        if field_name not in columns:
-            raise SystemExit(f"Specified field '{field_name}' not found in columns: {columns}")
-        return field_name
+    def _normalise(name: str) -> str:
+        """Lowercase and strip non-alphanumeric characters for fuzzy matching."""
 
-    lowered = {c.lower(): c for c in columns}
+        return "".join(ch for ch in name.lower() if ch.isalnum())
+
+    normalised_columns = {_normalise(col): col for col in columns}
+
+    if field_name:
+        if field_name in columns:
+            return field_name
+
+        normalised_field = _normalise(field_name)
+        if normalised_field in normalised_columns:
+            return normalised_columns[normalised_field]
+
+        raise SystemExit(
+            f"Specified field '{field_name}' not found in columns: {columns}. "
+            "Try a different value for --text-field/--label-field."
+        )
+
     for candidate in candidates:
-        if candidate in lowered:
-            return lowered[candidate]
+        normalised_candidate = _normalise(candidate)
+        if normalised_candidate in normalised_columns:
+            return normalised_columns[normalised_candidate]
+
     raise SystemExit(
         "Could not auto-detect the required column. Please specify --text-field "
-        "and --label-field explicitly."
+        "and --label-field explicitly. Available columns: "
+        f"{columns}"
     )
 
 
