@@ -21,7 +21,11 @@
 
 ## Recommendation
 
-Use character n-gram features or contextual models (e.g., XLM-R) as baselines. If fastText is retained, pair it with character-level features, verify coverage on target domains, and report macro metrics to avoid overstating robustness on single-language OOD evaluations.
+Use character n-gram features or contextual models (e.g., XLM-R) as baselines. If fastText is retained, pair it with character-level features, verify coverage on target domains, and report macro metrics to avoid overstating robustness on single-language OOD evaluations. To make OOD assessment meaningful beyond Kazakh, add hate-speech datasets for Urdu, Latvian, Yoruba, and Swedish so that:
+
+- **Cross-language robustness is observable.** Multi-language OOD sets prevent inflated accuracy from a single-language benchmark and reveal transfer gaps for each language.
+- **Coverage and slang issues are quantified per language.** Additional corpora let you measure OOV gaps, transliteration, and short-message brittleness in each target language instead of inferring from Kazakh alone.
+- **Baselines are fairly compared.** Parallel OOD scores across languages allow character n-gram and contextual models to be judged against fastText on balanced macro metrics.
 
 [^setup]: Experiment configuration and dataset sizes from the fastText OOD language ID run (lines 301–329) in `reports/fasttext_ood_language_id_experiment. run 14.12.2025.md`.
 [^id-performance]: In-domain Wikipedia accuracy and per-language observations (lines 354–420) in `reports/fasttext_ood_language_id_experiment. run 14.12.2025.md`.
