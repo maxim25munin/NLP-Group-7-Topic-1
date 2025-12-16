@@ -58,13 +58,26 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
 
 
 def read_examples(path: Path, language: str | None) -> Iterable[Tuple[str, str]]:
-    with path.open(newline="", encoding="utf8") as csvfile:
+    # Use utf-8-sig to automatically strip a potential BOM that would otherwise
+    # make the first header value "\ufeffcontent" and trigger a missing-column
+    # error when the script is run from notebooks or other environments.
+    with path.open(newline="", encoding="utf-8-sig") as csvfile:
         reader = csv.DictReader(csvfile)
-        if "content" not in reader.fieldnames or "channel_language" not in reader.fieldnames:
-            missing = {name for name in ["content", "channel_language"] if name not in reader.fieldnames}
+
+        # Normalise header names to be case- and BOM-insensitive.
+        raw_fieldnames = reader.fieldnames or []
+        normalized_fieldnames = [
+            (name or "").strip().lstrip("\ufeff").lower() for name in raw_fieldnames
+        ]
+        reader.fieldnames = normalized_fieldnames
+
+        required = {"content", "channel_language"}
+        missing = required.difference(normalized_fieldnames)
+        if missing:
             raise ValueError(
                 "Input CSV is missing required columns: " + ", ".join(sorted(missing))
             )
+
         for row in reader:
             content = (row.get("content") or "").strip()
             label = (row.get("channel_language") or "").strip()
