@@ -62,7 +62,17 @@ def read_examples(path: Path, language: str | None) -> Iterable[Tuple[str, str]]
     # make the first header value "\ufeffcontent" and trigger a missing-column
     # error when the script is run from notebooks or other environments.
     with path.open(newline="", encoding="utf-8-sig") as csvfile:
-        reader = csv.DictReader(csvfile)
+        # Detect the delimiter so the script works whether the source file is
+        # comma- or tab-separated (the provided `lv-comments-2019.csv` uses
+        # tabs). Fallback to commas if sniffing fails.
+        sample = csvfile.read(2048)
+        csvfile.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t"])
+        except csv.Error:
+            dialect = csv.get_dialect("excel")
+
+        reader = csv.DictReader(csvfile, dialect=dialect)
 
         # Normalise header names to be case- and BOM-insensitive.
         raw_fieldnames = reader.fieldnames or []
