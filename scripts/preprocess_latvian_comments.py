@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Reduce lv-comments-2019.csv to `text` and `label` columns for fastText "
@@ -49,7 +49,11 @@ def parse_args() -> argparse.Namespace:
             "Set to an empty string to keep all languages."
         ),
     )
-    return parser.parse_args()
+    # Using parse_known_args prevents failures when the script is invoked from
+    # environments (like Jupyter) that append additional arguments (e.g., the
+    # kernel connection file).
+    args, _ = parser.parse_known_args(argv)
+    return args
 
 
 def read_examples(path: Path, language: str | None) -> Iterable[Tuple[str, str]]:
