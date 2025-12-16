@@ -44,7 +44,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--language",
         type=str,
-        default="nat",
+        default="",
         help=(
             "Filter to a specific channel_language value (e.g., 'nat' or 'rus'). "
             "Set to an empty string to keep all languages."
@@ -60,6 +60,11 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
 def read_examples(path: Path, language: str | None) -> Iterable[Tuple[str, str]]:
     with path.open(newline="", encoding="utf8") as csvfile:
         reader = csv.DictReader(csvfile)
+        if "content" not in reader.fieldnames or "channel_language" not in reader.fieldnames:
+            missing = {name for name in ["content", "channel_language"] if name not in reader.fieldnames}
+            raise ValueError(
+                "Input CSV is missing required columns: " + ", ".join(sorted(missing))
+            )
         for row in reader:
             content = (row.get("content") or "").strip()
             label = (row.get("channel_language") or "").strip()
