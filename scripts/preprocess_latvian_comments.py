@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Iterable, List, Tuple
@@ -97,9 +98,23 @@ def summarize(examples: Iterable[Tuple[str, str]]) -> str:
     return f"{total} examples (" + ", ".join(parts) + ")"
 
 
+def set_csv_field_size_limit() -> None:
+    """Increase the CSV parser field size limit to handle long comments."""
+
+    max_int = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(max_int)
+            break
+        except OverflowError:
+            max_int //= 2
+
+
 def main() -> None:
     args = parse_args()
     language_filter = args.language or None
+
+    set_csv_field_size_limit()
 
     if not args.input.exists():
         raise SystemExit(f"Input file not found: {args.input}")
