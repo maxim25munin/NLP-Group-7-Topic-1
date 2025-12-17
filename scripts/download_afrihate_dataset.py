@@ -69,7 +69,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def resolve_token(cli_token: str | None) -> str | None:
+    """Return a usable Hugging Face token if provided via CLI or environment."""
+
+    return cli_token or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+
+
 def load_splits(repo_id: str, token: str | None) -> DatasetDict:
+    if token is None:  # pragma: no cover - configuration validation
+        raise DatasetAccessError(
+            "Failed to load dataset. The dataset is gated and requires an approved "
+            "Hugging Face account. Provide a token via --token, the HF_TOKEN "
+            "environment variable, or HUGGINGFACEHUB_API_TOKEN."
+        )
+
     try:
         return load_dataset(repo_id, token=token)
     except DatasetNotFoundError as exc:  # pragma: no cover - network dependent
@@ -92,7 +105,7 @@ def export_split(dataset: Dataset, output_path: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
-    token = args.token or os.getenv("HF_TOKEN")
+    token = resolve_token(args.token)
     dataset_dict = load_splits(args.repo_id, token)
 
     available_splits: Iterable[str] = dataset_dict.keys()
@@ -111,4 +124,4 @@ if __name__ == "__main__":
     try:
         main()
     except DatasetAccessError as exc:  # pragma: no cover - network dependent
-        raise SystemExit(str(exc)) from exc
+        raise SystemExit(str(exc))
