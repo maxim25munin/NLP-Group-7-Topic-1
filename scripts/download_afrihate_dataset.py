@@ -28,6 +28,10 @@ DEFAULT_REPO_ID = "afrihate/afrihate"
 DEFAULT_OUTPUT_DIR = Path("data/afrihate")
 
 
+class DatasetAccessError(RuntimeError):
+    """Raised when a dataset cannot be accessed due to permission issues."""
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -69,14 +73,14 @@ def load_splits(repo_id: str, token: str | None) -> DatasetDict:
     try:
         return load_dataset(repo_id, token=token)
     except DatasetNotFoundError as exc:  # pragma: no cover - network dependent
-        raise SystemExit(
+        raise DatasetAccessError(
             "Failed to load dataset. This dataset is gated and requires an "
             "approved Hugging Face account. Request access at "
             f"https://huggingface.co/datasets/{repo_id} and provide a token via "
             "--token or the HF_TOKEN environment variable."
         ) from exc
     except Exception as exc:  # pragma: no cover - network dependent
-        raise SystemExit(f"Failed to load dataset {repo_id}: {exc}") from exc
+        raise DatasetAccessError(f"Failed to load dataset {repo_id}: {exc}") from exc
 
 
 def export_split(dataset: Dataset, output_path: Path) -> None:
@@ -104,4 +108,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except DatasetAccessError as exc:  # pragma: no cover - network dependent
+        raise SystemExit(str(exc)) from exc
