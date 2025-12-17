@@ -17,10 +17,12 @@ The script requires the ``datasets`` package. Install it with:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Iterable, Sequence
 
 from datasets import Dataset, DatasetDict, load_dataset
+from datasets.utils import DatasetNotFoundError
 
 DEFAULT_REPO_ID = "afrihate/afrihate"
 DEFAULT_OUTPUT_DIR = Path("data/afrihate")
@@ -51,7 +53,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--token",
         default=None,
-        help="Optional Hugging Face token for private or gated datasets.",
+        help=(
+            "Optional Hugging Face token for private or gated datasets. Defaults "
+            "to the HF_TOKEN environment variable when unset."
+        ),
     )
 
     args, unknown = parser.parse_known_args(argv)
@@ -63,6 +68,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def load_splits(repo_id: str, token: str | None) -> DatasetDict:
     try:
         return load_dataset(repo_id, token=token)
+    except DatasetNotFoundError as exc:  # pragma: no cover - network dependent
+        raise SystemExit(
+            "Failed to load dataset. This dataset is gated and requires an "
+            "approved Hugging Face account. Request access at "
+            f"https://huggingface.co/datasets/{repo_id} and provide a token via "
+            "--token or the HF_TOKEN environment variable."
+        ) from exc
     except Exception as exc:  # pragma: no cover - network dependent
         raise SystemExit(f"Failed to load dataset {repo_id}: {exc}") from exc
 
@@ -76,7 +88,8 @@ def export_split(dataset: Dataset, output_path: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
-    dataset_dict = load_splits(args.repo_id, args.token)
+    token = args.token or os.getenv("HF_TOKEN")
+    dataset_dict = load_splits(args.repo_id, token)
 
     available_splits: Iterable[str] = dataset_dict.keys()
     requested_splits = args.splits or list(available_splits)
