@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from datasets import Dataset, DatasetDict, load_dataset
-from datasets.utils import DatasetNotFoundError
+from datasets.exceptions import DatasetNotFoundError
 
 DEFAULT_REPO_ID = "afrihate/afrihate"
 DEFAULT_OUTPUT_DIR = Path("data/afrihate")
