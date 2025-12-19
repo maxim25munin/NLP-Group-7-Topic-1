@@ -76,16 +76,17 @@ def resolve_token(cli_token: str | None) -> str | None:
 
 
 def load_splits(repo_id: str, token: str | None) -> DatasetDict:
-    if token is None:  # pragma: no cover - configuration validation
-        raise DatasetAccessError(
-            "Failed to load dataset. The dataset is gated and requires an approved "
-            "Hugging Face account. Provide a token via --token, the HF_TOKEN "
-            "environment variable, or HUGGINGFACEHUB_API_TOKEN."
-        )
-
     try:
         return load_dataset(repo_id, token=token)
     except DatasetNotFoundError as exc:  # pragma: no cover - network dependent
+        if token is None:
+            raise DatasetAccessError(
+                "Failed to load dataset. It may be gated or private and require an "
+                "approved Hugging Face account. Provide a token via --token, the "
+                "HF_TOKEN environment variable, or HUGGINGFACEHUB_API_TOKEN, then "
+                f"retry after requesting access at https://huggingface.co/datasets/{repo_id} "
+                "if needed."
+            ) from exc
         raise DatasetAccessError(
             "Failed to load dataset. This dataset is gated and requires an "
             "approved Hugging Face account. Request access at "
