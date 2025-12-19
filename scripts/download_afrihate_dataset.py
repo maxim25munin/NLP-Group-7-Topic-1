@@ -23,6 +23,7 @@ from typing import Iterable, Sequence
 
 from datasets import Dataset, DatasetDict, load_dataset
 from datasets.exceptions import DatasetNotFoundError
+from huggingface_hub import HfFolder
 
 DEFAULT_REPO_ID = "afrihate/afrihate"
 DEFAULT_OUTPUT_DIR = Path("data/afrihate")
@@ -72,7 +73,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def resolve_token(cli_token: str | None) -> str | None:
     """Return a usable Hugging Face token if provided via CLI or environment."""
 
-    return cli_token or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    return (
+        cli_token
+        or os.getenv("HF_TOKEN")
+        or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        or HfFolder.get_token()
+    )
 
 
 def load_splits(repo_id: str, token: str | None) -> DatasetDict:
