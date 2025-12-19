@@ -27,7 +27,6 @@ from huggingface_hub import HfFolder
 
 DEFAULT_REPO_ID = "afrihate/afrihate"
 DEFAULT_OUTPUT_DIR = Path("data/afrihate")
-EMBEDDED_HF_TOKEN = "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"
 
 
 class DatasetAccessError(RuntimeError):
@@ -79,7 +78,6 @@ def resolve_token(cli_token: str | None) -> str | None:
         or os.getenv("HF_TOKEN")
         or os.getenv("HUGGINGFACEHUB_API_TOKEN")
         or HfFolder.get_token()
-        or EMBEDDED_HF_TOKEN
     )
 
 
