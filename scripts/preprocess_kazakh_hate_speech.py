@@ -28,10 +28,10 @@ import argparse
 import csv
 from collections import Counter
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Clean the Kazakh hate-speech dataset and export a fastText-friendly CSV "
@@ -57,7 +57,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use the stemmed message column instead of the raw message text.",
     )
-    return parser.parse_args()
+    args, unknown = parser.parse_known_args(args=argv)
+    if unknown:
+        print(f"Ignoring unrecognised arguments: {', '.join(unknown)}")
+    return args
 
 
 KNOWN_TRAILING_TAGS = {"propaganda", "radicalization", "recruitment"}
@@ -112,8 +115,8 @@ def summarize(examples: Iterable[Tuple[str, str]]) -> str:
     return f"{total} examples (" + ", ".join(parts) + ")"
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: Optional[List[str]] = None) -> None:
+    args = parse_args(argv)
     if not args.input.exists():
         raise SystemExit(f"Input file not found: {args.input}")
 
@@ -126,4 +129,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # Detect whether the script was launched inside a Jupyter notebook. In that
+    # scenario we ignore the notebook's command-line arguments and supply an
+    # empty list so `argparse` falls back to all defaults.
+    import sys
+
+    if sys.argv and sys.argv[0].endswith("ipykernel_launcher.py"):
+        main([])
+    else:
+        main()
