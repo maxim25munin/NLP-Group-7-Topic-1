@@ -25,7 +25,7 @@ QUESTION_FIELD = "Question (Urdu)"
 REASONING_FIELD = "Reasoning (Urdu)"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Convert the Urdu GSM8K CSV to a fastText-friendly CSV containing "
@@ -44,7 +44,10 @@ def parse_args() -> argparse.Namespace:
         default=Path("data/gsm8k_urdu_fasttext.csv"),
         help="Destination CSV with `text` and `label` columns.",
     )
-    return parser.parse_args()
+    # IPython and Jupyter inject their own CLI flags (e.g., "-f"), so we parse
+    # known arguments and ignore the rest to keep notebook execution working.
+    args, _ = parser.parse_known_args(argv)
+    return args
 
 
 def normalize_field(value: str | None) -> str:
