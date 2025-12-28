@@ -23,10 +23,14 @@
 
 Use character n-gram features or contextual models (e.g., XLM-R) as baselines. If fastText is retained, pair it with character-level features, verify coverage on target domains, and report macro metrics to avoid overstating robustness on single-language OOD evaluations. The five-language hate-speech evaluation already surfaces coverage gaps (e.g., Latvian vs. Yoruba OOV), but expanding OOD sources further can strengthen per-language diagnostics and ensure fair comparisons across baselines.
 
+## Hypothesis check: are pretrained fastText embeddings a safe non-DL baseline?
+
+The Q1 hypothesis warns that pretrained fastText embeddings may be brittle when repurposed as fixed features. The five-language OOD study mostly supports this caution: despite a modest 1.17-point accuracy drop from Wikipedia to hate-speech/social-media domains, the aggregate hides structural fragility. Latvian OOD accuracy falls to 0.9840 with a 24.1% OOV rate and 469,222 unseen terms, while Yoruba shows an even higher 37.9% OOV rate despite near-perfect accuracy—evidence that coverage gaps can resurface on more varied tasks.【F:reports/fasttext_ood_language_id_experiment. run 28.12.2025.md†L326-L373】【F:reports/fasttext_ood_language_id_experiment. run 28.12.2025.md†L527-L565】【F:reports/fasttext_ood_language_id_experiment. run 28.12.2025.md†L819-L824】 The manual errors—short Kazakh posts mislabeled as Yoruba—underline how transliteration and sparse context can still derail the embeddings.【F:reports/fasttext_ood_language_id_experiment. run 28.12.2025.md†L856-L895】 In sum, while headline metrics look strong, the error modes and OOV skew validate the hypothesis: pretrained fastText vectors alone are not a dependable non-DL baseline without complementary character-level features and per-domain coverage checks.
+
 [^setup]: Experiment configuration and dataset sizes from the fastText OOD language ID run (lines 330–373) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
-[^id-performance]: In-domain Wikipedia accuracy and per-language observations (lines 400–458) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
-[^ood-results]: Per-language and combined OOD performance metrics (lines 480–690) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
-[^tfidf-comparison]: Comparison with Milestone TF–IDF baseline and performance drop calculation (lines 693–765) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
-[^oov]: OOV analysis covering Wikipedia and hate-speech vocabularies plus unique term counts (lines 775–824) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
-[^error-examples]: Manual error analysis excerpt on short OOD posts (lines 827–895) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
+[^id-performance]: In-domain Wikipedia accuracy and per-language observations (lines 422–467) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
+[^ood-results]: Per-language and combined OOD performance metrics (lines 499–690) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
+[^tfidf-comparison]: Comparison with Milestone TF–IDF baseline and performance drop calculation (lines 693–748) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
+[^oov]: OOV analysis covering Wikipedia and hate-speech vocabularies plus unique term counts (lines 777–824) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
+[^error-examples]: Manual error analysis excerpt on short OOD posts (lines 856–895) in `reports/fasttext_ood_language_id_experiment. run 28.12.2025.md`.
 [^kazakh-source]: Source dataset link for Kazakh hate speech: https://peerj.com/articles/cs-3027/#supplemental-information.
