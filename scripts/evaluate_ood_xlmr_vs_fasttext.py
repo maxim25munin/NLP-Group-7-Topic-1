@@ -401,7 +401,15 @@ def evaluate_xlmr_classifier(
     return id_eval, ood_eval
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Jupyter and some IDEs inject additional arguments (for example the ``-f``
+    flag used by IPython to pass the connection file). ``argparse`` raises a
+    ``SystemExit`` when it encounters unexpected flags, which made the script
+    unusable from a notebook. Using ``parse_known_args`` lets us ignore
+    irrelevant parameters while still validating the recognised options.
+    """
     parser = argparse.ArgumentParser(
         description="Compare XLM-RoBERTa and fastText language ID on OOD hate speech/social media data.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -448,7 +456,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip XLM-R fine-tuning (useful when transformers dependencies are unavailable).",
     )
-    return parser.parse_args()
+    known_args, unknown_args = parser.parse_known_args(args=args)
+    if unknown_args:
+        warnings.warn(f"Ignoring unrecognised arguments: {unknown_args}")
+    return known_args
 
 
 def main() -> None:
