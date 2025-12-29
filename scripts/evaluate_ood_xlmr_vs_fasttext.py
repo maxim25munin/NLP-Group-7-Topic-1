@@ -425,21 +425,19 @@ def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--ood-files",
         type=json.loads,
-        default=json.dumps(
-            {
-                "kazakh": "data/kazakh_hate_speech_fasttext.csv",
-                "yoruba": "data/afrihate_yoruba_fasttext.csv",
-                "latvian": "data/latvian_comments_fasttext_nat_only_20mb.csv",
-                "swedish": "data/biaswe_fasttext.csv",
-                "urdu": "data/gsm8k_urdu_fasttext.csv",
-            }
-        ),
+        default={
+            "kazakh": "data/kazakh_hate_speech_fasttext.csv",
+            "yoruba": "data/afrihate_yoruba_fasttext.csv",
+            "latvian": "data/latvian_comments_fasttext_nat_only_20mb.csv",
+            "swedish": "data/biaswe_fasttext.csv",
+            "urdu": "data/gsm8k_urdu_fasttext.csv",
+        },
         help="JSON mapping of language -> CSV path for OOD datasets.",
     )
     parser.add_argument(
         "--fasttext-language-codes",
         type=json.loads,
-        default=json.dumps({"kazakh": "kk", "latvian": "lv", "swedish": "sv", "yoruba": "yo", "urdu": "ur"}),
+        default={"kazakh": "kk", "latvian": "lv", "swedish": "sv", "yoruba": "yo", "urdu": "ur"},
         help="JSON mapping of language -> ISO code used to locate cc.<code>.300.bin files.",
     )
     parser.add_argument("--max-sentences", type=int, default=2000, help="Cap sentences per language for Wikipedia data.")
@@ -465,8 +463,13 @@ def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    ood_files = {lang: Path(path) for lang, path in json.loads(args.ood_files).items()}
-    fasttext_codes = json.loads(args.fasttext_language_codes)
+    if isinstance(args.ood_files, str):
+        ood_files_raw = json.loads(args.ood_files)
+    else:
+        ood_files_raw = args.ood_files
+    ood_files = {lang: Path(path) for lang, path in ood_files_raw.items()}
+
+    fasttext_codes = json.loads(args.fasttext_language_codes) if isinstance(args.fasttext_language_codes, str) else args.fasttext_language_codes
 
     ood_sets: Dict[str, pd.DataFrame] = {}
     for lang in args.languages:
