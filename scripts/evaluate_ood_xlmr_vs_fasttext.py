@@ -25,12 +25,26 @@ except Exception as exc:  # pragma: no cover - optional dependency
 # Lazily import transformers stack for the XLM-R baseline
 TRANSFORMERS_IMPORT_ERROR: Optional[Exception] = None
 try:  # pragma: no cover - heavy dependency initialisation
+    from packaging import version
+
+    try:
+        import huggingface_hub
+
+        if version.parse(huggingface_hub.__version__) >= version.parse("1.0.0"):
+            raise ImportError(
+                "huggingface_hub>=1.0 detected; transformers in this project requires "
+                "huggingface_hub<1.0. Install a compatible version with "
+                "`pip install \"huggingface_hub<1.0\"`."
+            )
+    except ImportError:
+        # Either the package is missing (handled below) or already incompatible.
+        pass
+
     import torch
     from datasets import Dataset
     import transformers
 
     if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
-        from packaging import version
 
         def _is_torch_greater_or_equal(min_version: str) -> bool:
             if torch is None:
