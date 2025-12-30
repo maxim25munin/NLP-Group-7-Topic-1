@@ -5,6 +5,7 @@
 # The CPU-only PyTorch build is sufficient for the evaluation script, but feel
 # free to install a GPU-enabled build if your hardware supports it.
 torch>=2.1.0
-transformers>=4.38.0
+transformers>=4.45.0
+huggingface_hub>=0.34.0
 datasets>=2.16.0
 accelerate>=0.27.0

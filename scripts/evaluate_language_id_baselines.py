@@ -114,16 +114,26 @@ try:  # pragma: no cover - heavy dependency initialisation
     import torch
     from datasets import Dataset
 
-    # NOTE: Some environments ship an older version of Hugging Face
-    # ``transformers`` that predates the ``is_torch_greater_or_equal`` utility
-    # function.  Recent releases of the library import this helper from
-    # ``transformers.utils`` when initialising the :class:`~transformers.Trainer`
-    # class.  If the function is missing the import raises an ``ImportError``
-    # even though the rest of the API works as expected.  To keep the training
-    # baseline usable without forcing a specific ``transformers`` version we
-    # provide a tiny compatibility shim before importing the trainer-related
-    # classes.
-    import transformers
+    try:
+        # NOTE: Some environments ship an older version of Hugging Face
+        # ``transformers`` that predates the ``is_torch_greater_or_equal`` utility
+        # function.  Recent releases of the library import this helper from
+        # ``transformers.utils`` when initialising the :class:`~transformers.Trainer`
+        # class.  If the function is missing the import raises an ``ImportError``
+        # even though the rest of the API works as expected.  To keep the training
+        # baseline usable without forcing a specific ``transformers`` version we
+        # provide a tiny compatibility shim before importing the trainer-related
+        # classes.
+        import transformers
+    except ImportError as exc:
+        if "huggingface-hub" in str(exc) and transformers_version is not None:
+            raise ImportError(
+                "The installed transformers build is incompatible with the current "
+                "huggingface_hub release. Upgrade transformers to >=4.45.0 (see "
+                "docs/requirements-transformers.txt) or downgrade huggingface_hub "
+                "to <1.0.0."
+            ) from exc
+        raise
 
     if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
         try:
