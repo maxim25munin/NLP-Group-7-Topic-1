@@ -30,11 +30,15 @@ try:  # pragma: no cover - heavy dependency initialisation
     try:
         import huggingface_hub
 
-        if version.parse(huggingface_hub.__version__) >= version.parse("1.0.0"):
+        # Transformers 4.45+ supports huggingface_hub>=0.23, so only warn for
+        # unexpectedly *old* installations instead of blocking newer ones. This
+        # prevents false incompatibility errors when using modern environments
+        # (e.g., huggingface_hub 1.x).
+        min_hf_version = version.parse("0.34.0")
+        if version.parse(huggingface_hub.__version__) < min_hf_version:
             raise ImportError(
-                "huggingface_hub>=1.0 detected; transformers in this project requires "
-                "huggingface_hub<1.0. Install a compatible version with "
-                "`pip install \"huggingface_hub<1.0\"`."
+                "huggingface_hub version is too old; please upgrade with "
+                "`pip install -U \"huggingface_hub>=0.34.0\"`."
             )
     except ImportError:
         # Either the package is missing (handled below) or already incompatible.
