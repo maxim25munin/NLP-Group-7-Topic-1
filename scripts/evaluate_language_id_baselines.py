@@ -33,6 +33,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from importlib import import_module
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
@@ -75,7 +76,41 @@ try:  # pragma: no cover - heavy dependency initialisation
     # for users who do have TensorFlow installed.
     os.environ.setdefault("USE_TF", "0")
     os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
-    
+
+    from packaging import version
+
+    transformers_version: Optional[version.Version] = None
+    try:
+        transformers_version = version.parse(importlib_metadata.version("transformers"))
+    except importlib_metadata.PackageNotFoundError:
+        pass
+
+    try:
+        import huggingface_hub
+
+        min_hf_version = version.parse("0.34.0")
+        hf_version = version.parse(huggingface_hub.__version__)
+
+        if hf_version < min_hf_version:
+            raise ImportError(
+                "huggingface_hub version is too old; please upgrade with "
+                "`pip install -U \"huggingface_hub>=0.34.0\"`."
+            )
+
+        if (
+            transformers_version is not None
+            and transformers_version < version.parse("4.45.0")
+            and hf_version >= version.parse("1.0.0")
+        ):
+            raise ImportError(
+                "Installed transformers "
+                f"{transformers_version} expects huggingface_hub<1.0.0. "
+                "Please upgrade transformers (e.g., `pip install -U transformers`) "
+                "or install a compatible hub release (<1.0.0)."
+            )
+    except ImportError:
+        raise
+
     import torch
     from datasets import Dataset
 
