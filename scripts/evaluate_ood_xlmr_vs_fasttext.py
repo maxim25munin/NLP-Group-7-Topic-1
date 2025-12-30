@@ -8,6 +8,7 @@ import inspect
 import random
 import warnings
 from dataclasses import dataclass
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -27,6 +28,12 @@ TRANSFORMERS_IMPORT_ERROR: Optional[Exception] = None
 try:  # pragma: no cover - heavy dependency initialisation
     from packaging import version
 
+    transformers_version: Optional[version.Version] = None
+    try:
+        transformers_version = version.parse(importlib_metadata.version("transformers"))
+    except importlib_metadata.PackageNotFoundError:
+        pass
+
     try:
         import huggingface_hub
 
@@ -41,6 +48,21 @@ try:  # pragma: no cover - heavy dependency initialisation
             raise ImportError(
                 "huggingface_hub version is too old; please upgrade with "
                 "`pip install -U \"huggingface_hub>=0.34.0\"`."
+            )
+
+        # Some older transformers releases require huggingface_hub<1.0.0. When
+        # a newer hub is installed we surface a clear, actionable error instead
+        # of the opaque import failure emitted by transformers itself.
+        if (
+            transformers_version is not None
+            and transformers_version < version.parse("4.45.0")
+            and hf_version >= version.parse("1.0.0")
+        ):
+            raise ImportError(
+                "Installed transformers "
+                f"{transformers_version} expects huggingface_hub<1.0.0. "
+                "Please upgrade transformers (e.g., `pip install -U transformers`) "
+                "or install a compatible hub release (<1.0.0)."
             )
     except ImportError:
         # Either the package is missing (handled below) or already incompatible.
