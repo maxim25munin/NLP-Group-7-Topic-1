@@ -593,11 +593,21 @@ def main() -> None:
     if args.skip_xlmr:
         print("Skipping XLM-R evaluation (per --skip-xlmr).")
     elif TRANSFORMERS_IMPORT_ERROR is not None:
+        import_error = str(TRANSFORMERS_IMPORT_ERROR)
+        compatibility_hint = ""
+
+        if "huggingface_hub" in import_error:
+            compatibility_hint = (
+                " Detected a transformers/huggingface_hub version mismatch. "
+                "Upgrade transformers to >=4.45.0 with ``pip install -U \"transformers>=4.45.0\"`` "
+                "or install a compatible hub release with ``pip install -U \"huggingface_hub<1.0.0\"``."
+            )
+
         warnings.warn(
             "PyTorch/transformers not available; skipping XLM-R baseline. "
             "Install the optional dependencies with `pip install -r "
             "docs/requirements-transformers.txt`. "
-            f"Import error: {TRANSFORMERS_IMPORT_ERROR}"
+            f"Import error: {import_error}." + compatibility_hint
         )
     else:
         xlmr_id_eval, xlmr_ood_eval = evaluate_xlmr_classifier(
