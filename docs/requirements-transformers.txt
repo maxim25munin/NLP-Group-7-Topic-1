@@ -1,5 +1,6 @@
 # Optional dependencies required to run the XLM-R baseline in
-# scripts/evaluate_language_id_baselines.py. Install with:
+# scripts/evaluate_language_id_baselines.py and
+# scripts/evaluate_ood_xlmr_vs_fasttext.py. Install with:
 #   pip install -r requirements-transformers.txt
 #
 # The CPU-only PyTorch build is sufficient for the evaluation script, but feel
