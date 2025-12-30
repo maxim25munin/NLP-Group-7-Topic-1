@@ -961,10 +961,22 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             LOGGER.warning("Skipping XLM-R baseline: %s", exc)
     else:
         if TRANSFORMERS_IMPORT_ERROR:
+            import_error = str(TRANSFORMERS_IMPORT_ERROR)
+            compatibility_hint = ""
+
+            if "huggingface_hub" in import_error:
+                compatibility_hint = (
+                    " Detected a transformers/huggingface_hub version mismatch. "
+                    "Upgrade transformers to >=4.45.0 with ``pip install -U \"transformers>=4.45.0\"`` "
+                    "or install a compatible hub release with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                )
+
             LOGGER.warning(
                 "PyTorch/transformers not available; skipping XLM-R baseline. "
-                "Install the optional dependencies with `pip install -r requirements-transformers.txt`.",
-                exc_info=TRANSFORMERS_IMPORT_ERROR,
+                "Install the optional dependencies with `pip install -r requirements-transformers.txt`. "
+                "Import error: %s.%s",
+                import_error,
+                compatibility_hint,
             )
         else:
             LOGGER.warning(
