@@ -70,7 +70,18 @@ try:  # pragma: no cover - heavy dependency initialisation
 
     import torch
     from datasets import Dataset
-    import transformers
+
+    try:
+        import transformers
+    except ImportError as exc:
+        if "huggingface-hub" in str(exc) and transformers_version is not None:
+            raise ImportError(
+                "The installed transformers build is incompatible with the current "
+                "huggingface_hub release. Upgrade transformers to >=4.45.0 (see "
+                "docs/requirements-transformers.txt) or downgrade huggingface_hub "
+                "to <1.0.0."
+            ) from exc
+        raise
 
     if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
 
