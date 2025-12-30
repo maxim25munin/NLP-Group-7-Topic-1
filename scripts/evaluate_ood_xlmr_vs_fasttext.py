@@ -595,6 +595,8 @@ def main() -> None:
     elif TRANSFORMERS_IMPORT_ERROR is not None:
         warnings.warn(
             "PyTorch/transformers not available; skipping XLM-R baseline. "
+            "Install the optional dependencies with `pip install -r "
+            "docs/requirements-transformers.txt`. "
             f"Import error: {TRANSFORMERS_IMPORT_ERROR}"
         )
     else:
