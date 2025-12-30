@@ -7,6 +7,9 @@
 # free to install a GPU-enabled build if your hardware supports it.
 torch>=2.1.0
 transformers>=4.45.0
-huggingface_hub>=0.34.0
+# huggingface_hub 1.x is incompatible with older transformer builds; pin below 1.0
+# to avoid the version mismatch warning seen when optional deps are only partly
+# upgraded. See the warning messages in the evaluation scripts for upgrade hints.
+huggingface_hub>=0.34.0,<1.0.0
 datasets>=2.16.0
 accelerate>=0.27.0
