@@ -104,17 +104,13 @@ try:  # pragma: no cover - heavy dependency initialisation
                 "`pip install -U \"huggingface_hub>=0.34.0\"`."
             )
 
-        min_transformers_for_hf_1x = version.parse("4.45.0")
-        if (
-            hf_version >= version.parse("1.0.0")
-            and transformers_version is not None
-            and transformers_version < min_transformers_for_hf_1x
-        ):
+        if hf_version >= version.parse("1.0.0"):
             raise ImportError(
-                "Detected huggingface_hub>=1.0.0 alongside transformers "
-                f"{transformers_version}. Upgrade transformers to >=4.45.0 (see "
-                "docs/requirements-transformers.txt) or install a compatible hub "
-                "build with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                "Detected huggingface_hub>=1.0.0. The bundled transformers "
+                "baseline currently expects huggingface_hub<1.0.0; reinstall the "
+                "optional dependencies with ``pip install -r "
+                "docs/requirements-transformers.txt`` or downgrade the hub "
+                "package with ``pip install -U \"huggingface_hub<1.0.0\"``."
             )
     except ImportError:
         raise
@@ -979,26 +975,23 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     hf_version = None
 
                 if hf_version is not None and hf_version >= version.parse("1.0.0"):
-                    transformer_version = (
-                        version.parse(TRANSFORMERS_VERSION) if TRANSFORMERS_VERSION else None
+                    compatibility_hint = (
+                        " Detected huggingface_hub>=1.0.0. The bundled transformers baseline "
+                        "expects huggingface_hub<1.0.0; reinstall the optional dependencies "
+                        "with ``pip install -r docs/requirements-transformers.txt`` or "
+                        "downgrade the hub package with ``pip install -U \"huggingface_hub<1.0.0\"``."
                     )
-
-                    if transformer_version is not None and transformer_version < version.parse("4.45.0"):
-                        compatibility_hint = (
-                            " Detected huggingface_hub>=1.0.0 with transformers<4.45.0. "
-                            "Upgrade transformers with ``pip install -U \"transformers>=4.45.0\"`` "
-                            "or install a compatible hub build with ``pip install -U \"huggingface_hub<1.0.0\"``."
-                        )
-                    else:
-                        compatibility_hint = (
-                            " Detected huggingface_hub>=1.0.0. Ensure transformers>=4.45.0 "
-                            "is installed to use the XLM-R baseline with hub 1.x releases."
-                        )
+                elif hf_version is not None and hf_version < version.parse("0.34.0"):
+                    compatibility_hint = (
+                        " Detected huggingface_hub version below 0.34.0. Upgrade with ``pip install -U "
+                        "\"huggingface_hub>=0.34.0,<1.0.0\"`` or reinstall the optional dependencies "
+                        "with ``pip install -r docs/requirements-transformers.txt``."
+                    )
                 else:
                     compatibility_hint = (
-                        " Detected a transformers/huggingface_hub version mismatch. "
-                        "Upgrade transformers to >=4.45.0 with ``pip install -U \"transformers>=4.45.0\"`` "
-                        "or install a compatible hub release with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                        " Detected a transformers/huggingface_hub version mismatch. Reinstall the "
+                        "optional dependencies with ``pip install -r docs/requirements-transformers.txt`` "
+                        "to restore a compatible combination."
                     )
 
             version_hint = ""
@@ -1013,7 +1006,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
             LOGGER.warning(
                 "PyTorch/transformers not available; skipping XLM-R baseline. "
-                "Install the optional dependencies with `pip install -r requirements-transformers.txt`. "
+                "Install the optional dependencies with `pip install -r docs/requirements-transformers.txt`. "
                 "Import error: %s.%s%s",
                 import_error,
                 compatibility_hint,
@@ -1022,7 +1015,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         else:
             LOGGER.warning(
                 "PyTorch/transformers not available; skipping XLM-R baseline. "
-                "Install the optional dependencies with `pip install -r requirements-transformers.txt`."
+                "Install the optional dependencies with `pip install -r docs/requirements-transformers.txt`."
             )
 
     for result in results:
