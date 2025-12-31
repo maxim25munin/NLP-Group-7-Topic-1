@@ -7,9 +7,10 @@
 # free to install a GPU-enabled build if your hardware supports it.
 torch>=2.1.0
 transformers>=4.45.0
-# Transformers currently expect ``huggingface_hub`` releases below 1.0.0. If you
-# already have a hub 1.x release installed, downgrade it to a compatible build
-# with ``pip install -U "huggingface_hub<1.0.0"`` before running the baseline.
-huggingface_hub>=0.34.0,<1.0.0
+# The XLM-R baseline requires the Hugging Face Hub client. Versions 0.34.0 and
+# newer are compatible with recent ``transformers`` releases (4.45.0+). Older
+# hub builds lack APIs that ``transformers`` relies on and will fail at import
+# time.
+huggingface_hub>=0.34.0
 datasets>=2.16.0
 accelerate>=0.27.0
