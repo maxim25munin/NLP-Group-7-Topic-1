@@ -53,15 +53,18 @@ try:  # pragma: no cover - heavy dependency initialisation
                 "`pip install -U \"huggingface_hub>=0.34.0\"`."
             )
 
-        if hf_version >= version.parse("1.0.0"):
-            if transformers_version is not None and transformers_version < version.parse("5.0.0"):
-                raise ImportError(
-                    "Detected huggingface_hub>=1.0.0 alongside transformers "
-                    f"{transformers_version}. The XLM-R baseline pins "
-                    "huggingface_hub<1.0.0 (see docs/requirements-transformers.txt). "
-                    "Install a compatible hub build with ``pip install -U \"huggingface_hub<1.0.0\"`` "
-                    "or upgrade transformers to a release that officially supports the 1.x hub series."
-                )
+        min_transformers_for_hf_1x = version.parse("4.45.0")
+        if (
+            hf_version >= version.parse("1.0.0")
+            and transformers_version is not None
+            and transformers_version < min_transformers_for_hf_1x
+        ):
+            raise ImportError(
+                "Detected huggingface_hub>=1.0.0 alongside transformers "
+                f"{transformers_version}. Upgrade transformers to >=4.45.0 (see "
+                "docs/requirements-transformers.txt) or install a compatible hub "
+                "build with ``pip install -U \"huggingface_hub<1.0.0\"``."
+            )
     except ImportError:
         # Either the package is missing (handled below) or already incompatible.
         pass
@@ -76,8 +79,8 @@ try:  # pragma: no cover - heavy dependency initialisation
             raise ImportError(
                 "The installed transformers build is incompatible with the current "
                 "huggingface_hub release. Upgrade transformers to >=4.45.0 (see "
-                "docs/requirements-transformers.txt) or downgrade huggingface_hub "
-                "to <1.0.0."
+                "docs/requirements-transformers.txt) or install a compatible hub "
+                "release with ``pip install -U \"huggingface_hub<1.0.0\"``."
             ) from exc
         raise
 
@@ -601,11 +604,21 @@ def main() -> None:
                 hf_version = None
 
             if hf_version is not None and hf_version >= version.parse("1.0.0"):
-                compatibility_hint = (
-                    " Detected huggingface_hub>=1.0.0 with transformers. "
-                    "The XLM-R baseline expects huggingface_hub<1.0.0; "
-                    "install a compatible hub build with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                transformer_version = (
+                    version.parse(TRANSFORMERS_VERSION) if TRANSFORMERS_VERSION else None
                 )
+
+                if transformer_version is not None and transformer_version < version.parse("4.45.0"):
+                    compatibility_hint = (
+                        " Detected huggingface_hub>=1.0.0 with transformers<4.45.0. "
+                        "Upgrade transformers with ``pip install -U \"transformers>=4.45.0\"`` "
+                        "or install a compatible hub build with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                    )
+                else:
+                    compatibility_hint = (
+                        " Detected huggingface_hub>=1.0.0. Ensure transformers>=4.45.0 "
+                        "is installed to use the XLM-R baseline with hub 1.x releases."
+                    )
             else:
                 compatibility_hint = (
                     " Detected a transformers/huggingface_hub version mismatch. "
