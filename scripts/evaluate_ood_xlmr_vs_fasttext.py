@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import inspect
+import os
 import random
 import warnings
 from dataclasses import dataclass
@@ -28,6 +29,16 @@ TRANSFORMERS_IMPORT_ERROR: Optional[Exception] = None
 TRANSFORMERS_VERSION: Optional[str] = None
 HUGGINGFACE_HUB_VERSION: Optional[str] = None
 try:  # pragma: no cover - heavy dependency initialisation
+    # Explicitly disable the TensorFlow backend in Hugging Face `transformers`.
+    #
+    # Users running the notebook on Windows reported crashes when the
+    # `Trainer` import tried to load TensorFlow shared libraries that are not
+    # available in their environment.  Setting the environment flags keeps the
+    # library in its PyTorch-only mode while retaining the optional dependency
+    # for users who do have TensorFlow installed.
+    os.environ.setdefault("USE_TF", "0")
+    os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+
     from packaging import version
 
     transformers_version: Optional[version.Version] = None
@@ -46,12 +57,11 @@ try:  # pragma: no cover - heavy dependency initialisation
         min_hf_version = version.parse("0.34.0")
         max_hf_version: Optional[version.Version] = None
 
-        # ``huggingface_hub`` 1.x works with modern ``transformers`` releases
-        # (4.45+) but can break older installations.  Only enforce the upper
-        # bound when we know ``transformers`` is outdated.
+        # ``huggingface_hub`` 1.x is compatible with modern ``transformers``
+        # releases (4.45+) but can break older installations.  Only enforce the
+        # upper bound when we can detect an old ``transformers`` package.
         if transformers_version and transformers_version < version.parse("4.45.0"):
             max_hf_version = version.parse("1.0.0")
-
         HUGGINGFACE_HUB_VERSION = huggingface_hub.__version__
         hf_version = version.parse(HUGGINGFACE_HUB_VERSION)
 
@@ -64,17 +74,25 @@ try:  # pragma: no cover - heavy dependency initialisation
             raise ImportError(
                 "huggingface_hub version is too new for the installed transformers; "
                 "upgrade transformers to >=4.45.0 or downgrade hub with "
-                "`pip install -U \"huggingface_hub<1.0\"`.",
+                "`pip install -U \"huggingface_hub<1.0\"`."
             )
 
     except ImportError:
-        # Either the package is missing (handled below) or already incompatible.
-        pass
+        raise
 
     import torch
     from datasets import Dataset
 
     try:
+        # NOTE: Some environments ship an older version of Hugging Face
+        # ``transformers`` that predates the ``is_torch_greater_or_equal`` utility
+        # function.  Recent releases of the library import this helper from
+        # ``transformers.utils`` when initialising the :class:`~transformers.Trainer`
+        # class.  If the function is missing the import raises an ``ImportError``
+        # even though the rest of the API works as expected.  To keep the training
+        # baseline usable without forcing a specific ``transformers`` version we
+        # provide a tiny compatibility shim before importing the trainer-related
+        # classes.
         import transformers
     except ImportError as exc:
         if "huggingface-hub" in str(exc) and transformers_version is not None:
@@ -87,10 +105,31 @@ try:  # pragma: no cover - heavy dependency initialisation
         raise
 
     if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
+        try:
+            from packaging import version
+        except Exception:  # pragma: no cover - packaging is part of std envs
+            version = None
 
         def _is_torch_greater_or_equal(min_version: str) -> bool:
+            """Return ``True`` if the installed torch version satisfies ``min_version``.
+
+            The real helper was introduced in ``transformers`` 4.38.  Older
+            versions that still rely on :class:`~transformers.Trainer` do not
+            ship the utility, so we emulate the behaviour that recent releases
+            expect.  This mirrors the logic used inside ``transformers`` and is
+            sufficient for the training loop implemented in this repository.
+            """
+
             if torch is None:
                 return False
+            if version is None:
+                # Fallback to a very small parser that covers the ``MAJOR.MINOR``
+                # patterns we use in this project.
+                def _parse(ver: str) -> tuple[int, ...]:
+                    return tuple(int(part) for part in ver.split(".") if part.isdigit())
+
+                return _parse(torch.__version__) >= _parse(min_version)
+
             return version.parse(torch.__version__) >= version.parse(min_version)
 
         transformers.utils.is_torch_greater_or_equal = _is_torch_greater_or_equal
