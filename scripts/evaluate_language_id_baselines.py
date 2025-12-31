@@ -65,6 +65,8 @@ except Exception as exc:  # pragma: no cover - optional dependency
 # transformers stack. We import them lazily so the script can still evaluate the
 # classical baselines in environments where GPU support is unavailable.
 TRANSFORMERS_IMPORT_ERROR: Optional[Exception] = None
+TRANSFORMERS_VERSION: Optional[str] = None
+HUGGINGFACE_HUB_VERSION: Optional[str] = None
 
 try:  # pragma: no cover - heavy dependency initialisation
     # Explicitly disable the TensorFlow backend in Hugging Face `transformers`.
@@ -81,7 +83,8 @@ try:  # pragma: no cover - heavy dependency initialisation
 
     transformers_version: Optional[version.Version] = None
     try:
-        transformers_version = version.parse(importlib_metadata.version("transformers"))
+        TRANSFORMERS_VERSION = importlib_metadata.version("transformers")
+        transformers_version = version.parse(TRANSFORMERS_VERSION)
     except importlib_metadata.PackageNotFoundError:
         pass
 
@@ -89,7 +92,8 @@ try:  # pragma: no cover - heavy dependency initialisation
         import huggingface_hub
 
         min_hf_version = version.parse("0.34.0")
-        hf_version = version.parse(huggingface_hub.__version__)
+        HUGGINGFACE_HUB_VERSION = huggingface_hub.__version__
+        hf_version = version.parse(HUGGINGFACE_HUB_VERSION)
 
         if hf_version < min_hf_version:
             raise ImportError(
@@ -971,12 +975,23 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     "or install a compatible hub release with ``pip install -U \"huggingface_hub<1.0.0\"``."
                 )
 
+            version_hint = ""
+            if TRANSFORMERS_VERSION or HUGGINGFACE_HUB_VERSION:
+                version_hint = " (installed:"
+                if TRANSFORMERS_VERSION:
+                    version_hint += f" transformers {TRANSFORMERS_VERSION}"
+                if HUGGINGFACE_HUB_VERSION:
+                    spacer = "," if TRANSFORMERS_VERSION else ""
+                    version_hint += f"{spacer} huggingface_hub {HUGGINGFACE_HUB_VERSION}"
+                version_hint += ")"
+
             LOGGER.warning(
                 "PyTorch/transformers not available; skipping XLM-R baseline. "
                 "Install the optional dependencies with `pip install -r requirements-transformers.txt`. "
-                "Import error: %s.%s",
+                "Import error: %s.%s%s",
                 import_error,
                 compatibility_hint,
+                version_hint,
             )
         else:
             LOGGER.warning(
