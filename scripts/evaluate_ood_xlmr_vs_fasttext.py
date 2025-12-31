@@ -40,10 +40,9 @@ try:  # pragma: no cover - heavy dependency initialisation
     try:
         import huggingface_hub
 
-        # Transformers 4.45+ supports huggingface_hub>=0.23. Older releases used
-        # to require huggingface_hub<1.0, but recent versions of transformers
-        # work with huggingface_hub>=1.0 as well. Only enforce a lower bound so
-        # we do not block environments that already have a newer hub installed.
+        # Keep the optional dependency requirements aligned with
+        # docs/requirements-transformers.txt so that users get actionable errors
+        # when running the script with partially upgraded environments.
         min_hf_version = version.parse("0.34.0")
         HUGGINGFACE_HUB_VERSION = huggingface_hub.__version__
         hf_version = version.parse(HUGGINGFACE_HUB_VERSION)
@@ -54,20 +53,15 @@ try:  # pragma: no cover - heavy dependency initialisation
                 "`pip install -U \"huggingface_hub>=0.34.0\"`."
             )
 
-        # Some older transformers releases require huggingface_hub<1.0.0. When
-        # a newer hub is installed we surface a clear, actionable error instead
-        # of the opaque import failure emitted by transformers itself.
-        if (
-            transformers_version is not None
-            and transformers_version < version.parse("4.45.0")
-            and hf_version >= version.parse("1.0.0")
-        ):
-            raise ImportError(
-                "Installed transformers "
-                f"{transformers_version} expects huggingface_hub<1.0.0. "
-                "Please upgrade transformers (e.g., `pip install -U transformers`) "
-                "or install a compatible hub release (<1.0.0)."
-            )
+        if hf_version >= version.parse("1.0.0"):
+            if transformers_version is not None and transformers_version < version.parse("5.0.0"):
+                raise ImportError(
+                    "Detected huggingface_hub>=1.0.0 alongside transformers "
+                    f"{transformers_version}. The XLM-R baseline pins "
+                    "huggingface_hub<1.0.0 (see docs/requirements-transformers.txt). "
+                    "Install a compatible hub build with ``pip install -U \"huggingface_hub<1.0.0\"`` "
+                    "or upgrade transformers to a release that officially supports the 1.x hub series."
+                )
     except ImportError:
         # Either the package is missing (handled below) or already incompatible.
         pass
@@ -601,11 +595,23 @@ def main() -> None:
         compatibility_hint = ""
 
         if "huggingface_hub" in import_error:
-            compatibility_hint = (
-                " Detected a transformers/huggingface_hub version mismatch. "
-                "Upgrade transformers to >=4.45.0 with ``pip install -U \"transformers>=4.45.0\"`` "
-                "or install a compatible hub release with ``pip install -U \"huggingface_hub<1.0.0\"``."
-            )
+            try:
+                hf_version = version.parse(HUGGINGFACE_HUB_VERSION) if HUGGINGFACE_HUB_VERSION else None
+            except Exception:
+                hf_version = None
+
+            if hf_version is not None and hf_version >= version.parse("1.0.0"):
+                compatibility_hint = (
+                    " Detected huggingface_hub>=1.0.0 with transformers. "
+                    "The XLM-R baseline expects huggingface_hub<1.0.0; "
+                    "install a compatible hub build with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                )
+            else:
+                compatibility_hint = (
+                    " Detected a transformers/huggingface_hub version mismatch. "
+                    "Upgrade transformers to >=4.45.0 with ``pip install -U \"transformers>=4.45.0\"`` "
+                    "or install a compatible hub release with ``pip install -U \"huggingface_hub<1.0.0\"``."
+                )
 
         version_hint = ""
         if TRANSFORMERS_VERSION or HUGGINGFACE_HUB_VERSION:
