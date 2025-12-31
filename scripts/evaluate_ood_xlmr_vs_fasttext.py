@@ -15,6 +15,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from packaging import version
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -24,130 +25,78 @@ try:  # pragma: no cover - optional dependency
 except Exception as exc:  # pragma: no cover - optional dependency
     raise SystemExit("fastText is required for this script. Install it via `pip install fasttext`.") from exc
 
-# Lazily import transformers stack for the XLM-R baseline
 TRANSFORMERS_IMPORT_ERROR: Optional[Exception] = None
 TRANSFORMERS_VERSION: Optional[str] = None
 HUGGINGFACE_HUB_VERSION: Optional[str] = None
-try:  # pragma: no cover - heavy dependency initialisation
-    # Explicitly disable the TensorFlow backend in Hugging Face `transformers`.
-    #
-    # Users running the notebook on Windows reported crashes when the
-    # `Trainer` import tried to load TensorFlow shared libraries that are not
-    # available in their environment.  Setting the environment flags keeps the
-    # library in its PyTorch-only mode while retaining the optional dependency
-    # for users who do have TensorFlow installed.
+torch = None
+Dataset = None
+AutoModelForSequenceClassification = None
+AutoTokenizer = None
+Trainer = None
+TrainingArguments = None
+
+
+def _lazy_import_transformers_stack() -> bool:  # pragma: no cover - optional dependency
+    """Import the transformers stack on demand.
+
+    The optional dependencies required for the XLM-R baseline are heavy and not
+    always available in notebook environments.  This helper postpones the
+    import until the model is actually requested, keeping fastText-only runs
+    free of ``huggingface_hub`` and ``transformers`` imports.
+    """
+
+    global TRANSFORMERS_IMPORT_ERROR, TRANSFORMERS_VERSION, HUGGINGFACE_HUB_VERSION
+    global torch, Dataset, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+
+    if AutoModelForSequenceClassification is not None and AutoTokenizer is not None:
+        return True
+    if TRANSFORMERS_IMPORT_ERROR is not None:
+        return False
+
     os.environ.setdefault("USE_TF", "0")
     os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 
-    from packaging import version
-
-    transformers_version: Optional[version.Version] = None
     try:
-        TRANSFORMERS_VERSION = importlib_metadata.version("transformers")
-        transformers_version = version.parse(TRANSFORMERS_VERSION)
-    except importlib_metadata.PackageNotFoundError:
-        pass
-
-    try:
-        import huggingface_hub
-
-        # Keep the optional dependency requirements aligned with
-        # docs/requirements-transformers.txt so that users get actionable errors
-        # when running the script with partially upgraded environments.
-        min_hf_version = version.parse("0.34.0")
-        max_hf_version: Optional[version.Version] = None
-
-        # ``huggingface_hub`` 1.x is compatible with modern ``transformers``
-        # releases (4.45+) but can break older installations.  Only enforce the
-        # upper bound when we can detect an old ``transformers`` package.
-        if transformers_version and transformers_version < version.parse("4.45.0"):
-            max_hf_version = version.parse("1.0.0")
-        HUGGINGFACE_HUB_VERSION = huggingface_hub.__version__
-        hf_version = version.parse(HUGGINGFACE_HUB_VERSION)
-
-        if hf_version < min_hf_version:
-            raise ImportError(
-                "huggingface_hub version is too old; please upgrade with "
-                "`pip install -U \"huggingface_hub>=0.34.0,<2.0\"`."
-            )
-        if max_hf_version is not None and hf_version >= max_hf_version:
-            raise ImportError(
-                "huggingface_hub version is too new for the installed transformers; "
-                "upgrade transformers to >=4.45.0 or downgrade hub with "
-                "`pip install -U \"huggingface_hub<1.0\"`."
-            )
-
-    except ImportError:
-        raise
-
-    import torch
-    from datasets import Dataset
-
-    try:
-        # NOTE: Some environments ship an older version of Hugging Face
-        # ``transformers`` that predates the ``is_torch_greater_or_equal`` utility
-        # function.  Recent releases of the library import this helper from
-        # ``transformers.utils`` when initialising the :class:`~transformers.Trainer`
-        # class.  If the function is missing the import raises an ``ImportError``
-        # even though the rest of the API works as expected.  To keep the training
-        # baseline usable without forcing a specific ``transformers`` version we
-        # provide a tiny compatibility shim before importing the trainer-related
-        # classes.
-        import transformers
-    except ImportError as exc:
-        if "huggingface-hub" in str(exc) and transformers_version is not None:
-            raise ImportError(
-                "The installed transformers build is incompatible with the current "
-                "huggingface_hub release. Upgrade transformers to >=4.45.0 (see "
-                "docs/requirements-transformers.txt) or install a compatible hub "
-                "release with ``pip install -U \"huggingface_hub>=0.34.0,<2.0\"``."
-            ) from exc
-        raise
-
-    if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
         try:
-            from packaging import version
-        except Exception:  # pragma: no cover - packaging is part of std envs
-            version = None
+            TRANSFORMERS_VERSION = importlib_metadata.version("transformers")
+        except importlib_metadata.PackageNotFoundError:
+            TRANSFORMERS_VERSION = None
+        try:
+            HUGGINGFACE_HUB_VERSION = importlib_metadata.version("huggingface_hub")
+        except importlib_metadata.PackageNotFoundError:
+            HUGGINGFACE_HUB_VERSION = None
 
-        def _is_torch_greater_or_equal(min_version: str) -> bool:
-            """Return ``True`` if the installed torch version satisfies ``min_version``.
+        import torch as torch_mod
+        from datasets import Dataset as HF_Dataset
+        import transformers
 
-            The real helper was introduced in ``transformers`` 4.38.  Older
-            versions that still rely on :class:`~transformers.Trainer` do not
-            ship the utility, so we emulate the behaviour that recent releases
-            expect.  This mirrors the logic used inside ``transformers`` and is
-            sufficient for the training loop implemented in this repository.
-            """
+        if not hasattr(transformers.utils, "is_torch_greater_or_equal"):
 
-            if torch is None:
-                return False
-            if version is None:
-                # Fallback to a very small parser that covers the ``MAJOR.MINOR``
-                # patterns we use in this project.
-                def _parse(ver: str) -> tuple[int, ...]:
-                    return tuple(int(part) for part in ver.split(".") if part.isdigit())
+            def _is_torch_greater_or_equal(min_version: str) -> bool:
+                """Return ``True`` if the installed torch version satisfies ``min_version``."""
 
-                return _parse(torch.__version__) >= _parse(min_version)
+                if torch_mod is None:
+                    return False
 
-            return version.parse(torch.__version__) >= version.parse(min_version)
+                return version.parse(torch_mod.__version__) >= version.parse(min_version)
 
-        transformers.utils.is_torch_greater_or_equal = _is_torch_greater_or_equal
+            transformers.utils.is_torch_greater_or_equal = _is_torch_greater_or_equal
 
-    from transformers import (
-        AutoModelForSequenceClassification,
-        AutoTokenizer,
-        Trainer,
-        TrainingArguments,
-    )
-except Exception as exc:  # pragma: no cover - optional dependency
-    torch = None
-    Dataset = None
-    AutoModelForSequenceClassification = None
-    AutoTokenizer = None
-    Trainer = None
-    TrainingArguments = None
-    TRANSFORMERS_IMPORT_ERROR = exc
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+
+        torch = torch_mod
+        Dataset = HF_Dataset
+    except Exception as exc:  # pragma: no cover - optional dependency
+        torch = None
+        Dataset = None
+        AutoModelForSequenceClassification = None
+        AutoTokenizer = None
+        Trainer = None
+        TrainingArguments = None
+        TRANSFORMERS_IMPORT_ERROR = exc
+        return False
+
+    return True
 
 
 RANDOM_SEED = 13
@@ -468,7 +417,7 @@ def evaluate_xlmr_classifier(
     learning_rate: float,
     weight_decay: float,
 ) -> Tuple[Dict[str, object], Dict[str, object]]:
-    if torch is None:
+    if not _lazy_import_transformers_stack() or torch is None:
         raise RuntimeError(
             "PyTorch and transformers are required for the XLM-R baseline. "
             "Install optional dependencies with `pip install -r requirements-transformers.txt`."
@@ -634,94 +583,96 @@ def main() -> None:
 
     if args.skip_xlmr:
         print("Skipping XLM-R evaluation (per --skip-xlmr).")
-    elif TRANSFORMERS_IMPORT_ERROR is not None:
-        import_error = str(TRANSFORMERS_IMPORT_ERROR)
-        compatibility_hint = ""
-
-        if "huggingface_hub" in import_error:
-            try:
-                hf_version = version.parse(HUGGINGFACE_HUB_VERSION) if HUGGINGFACE_HUB_VERSION else None
-            except Exception:
-                hf_version = None
-
-            try:
-                transformers_version_parsed = (
-                    version.parse(TRANSFORMERS_VERSION) if TRANSFORMERS_VERSION else None
-                )
-            except Exception:
-                transformers_version_parsed = None
-
-            legacy_transformers_cutoff = version.parse("4.45.0") if version else None
-            hub_major_release = version.parse("1.0.0") if version else None
-
-            if hf_version is not None and hf_version < version.parse("0.34.0"):
-                compatibility_hint = (
-                    " Detected huggingface_hub version below 0.34.0. Upgrade with ``pip install -U "
-                    "\"huggingface_hub>=0.34.0,<2.0\"`` or reinstall the optional dependencies "
-                    "with ``pip install -r docs/requirements-transformers.txt``."
-                )
-            elif (
-                hf_version is not None
-                and transformers_version_parsed is not None
-                and legacy_transformers_cutoff is not None
-                and transformers_version_parsed < legacy_transformers_cutoff
-                and hub_major_release is not None
-                and hf_version >= hub_major_release
-            ):
-                compatibility_hint = (
-                    " Detected a transformers/huggingface_hub version mismatch (transformers<4.45.0 with "
-                    "huggingface_hub>=1.0). Upgrade transformers to >=4.45.0 or downgrade huggingface_hub below "
-                    "1.0 to restore compatibility."
-                )
-            else:
-                compatibility_hint = (
-                    " Detected a transformers/huggingface_hub version mismatch. Reinstall the "
-                    "optional dependencies with ``pip install -r docs/requirements-transformers.txt`` "
-                    "to restore a compatible combination."
-                )
-
-        version_hint = ""
-        if TRANSFORMERS_VERSION or HUGGINGFACE_HUB_VERSION:
-            version_hint = " (installed:"
-            if TRANSFORMERS_VERSION:
-                version_hint += f" transformers {TRANSFORMERS_VERSION}"
-            if HUGGINGFACE_HUB_VERSION:
-                spacer = "," if TRANSFORMERS_VERSION else ""
-                version_hint += f"{spacer} huggingface_hub {HUGGINGFACE_HUB_VERSION}"
-            version_hint += ")"
-
-        warnings.warn(
-            "PyTorch/transformers not available; skipping XLM-R baseline. "
-            "Install the optional dependencies with `pip install -r "
-            "docs/requirements-transformers.txt`. "
-            f"Import error: {import_error}." + compatibility_hint + version_hint
-        )
     else:
-        xlmr_id_eval, xlmr_ood_eval = evaluate_xlmr_classifier(
-            train_df.text.tolist(),
-            train_df.label.tolist(),
-            val_df.text.tolist(),
-            val_df.label.tolist(),
-            test_df.text.tolist(),
-            test_df.label.tolist(),
-            ood_df.text.tolist(),
-            ood_df.label.tolist(),
-            model_name=args.xlmr_model,
-            output_dir=args.xlmr_output_dir,
-            epochs=args.xlmr_epochs,
-            batch_size=args.xlmr_batch_size,
-            learning_rate=args.xlmr_learning_rate,
-            weight_decay=args.xlmr_weight_decay,
-        )
-        print(f"XLM-R in-distribution accuracy: {xlmr_id_eval['accuracy']:.4f}")
-        print(f"XLM-R macro OOD accuracy: {xlmr_ood_eval['accuracy']:.4f}")
-        results.append(
-            {
-                "Model": "XLM-R fine-tuning",
-                "ID Accuracy": xlmr_id_eval["accuracy"],
-                "OOD Accuracy": xlmr_ood_eval["accuracy"],
-            }
-        )
+        xlmr_available = _lazy_import_transformers_stack()
+        if not xlmr_available or TRANSFORMERS_IMPORT_ERROR is not None:
+            import_error = str(TRANSFORMERS_IMPORT_ERROR)
+            compatibility_hint = ""
+
+            if "huggingface_hub" in import_error:
+                try:
+                    hf_version = version.parse(HUGGINGFACE_HUB_VERSION) if HUGGINGFACE_HUB_VERSION else None
+                except Exception:
+                    hf_version = None
+
+                try:
+                    transformers_version_parsed = (
+                        version.parse(TRANSFORMERS_VERSION) if TRANSFORMERS_VERSION else None
+                    )
+                except Exception:
+                    transformers_version_parsed = None
+
+                legacy_transformers_cutoff = version.parse("4.45.0") if version else None
+                hub_major_release = version.parse("1.0.0") if version else None
+
+                if hf_version is not None and hf_version < version.parse("0.34.0"):
+                    compatibility_hint = (
+                        " Detected huggingface_hub version below 0.34.0. Upgrade with ``pip install -U "
+                        "\"huggingface_hub>=0.34.0,<2.0\"`` or reinstall the optional dependencies "
+                        "with ``pip install -r docs/requirements-transformers.txt``."
+                    )
+                elif (
+                    hf_version is not None
+                    and transformers_version_parsed is not None
+                    and legacy_transformers_cutoff is not None
+                    and transformers_version_parsed < legacy_transformers_cutoff
+                    and hub_major_release is not None
+                    and hf_version >= hub_major_release
+                ):
+                    compatibility_hint = (
+                        " Detected a transformers/huggingface_hub version mismatch (transformers<4.45.0 with "
+                        "huggingface_hub>=1.0). Upgrade transformers to >=4.45.0 or downgrade huggingface_hub below "
+                        "1.0 to restore compatibility."
+                    )
+                else:
+                    compatibility_hint = (
+                        " Detected a transformers/huggingface_hub version mismatch. Reinstall the "
+                        "optional dependencies with ``pip install -r docs/requirements-transformers.txt`` "
+                        "to restore a compatible combination."
+                    )
+
+            version_hint = ""
+            if TRANSFORMERS_VERSION or HUGGINGFACE_HUB_VERSION:
+                version_hint = " (installed:"
+                if TRANSFORMERS_VERSION:
+                    version_hint += f" transformers {TRANSFORMERS_VERSION}"
+                if HUGGINGFACE_HUB_VERSION:
+                    spacer = "," if TRANSFORMERS_VERSION else ""
+                    version_hint += f"{spacer} huggingface_hub {HUGGINGFACE_HUB_VERSION}"
+                version_hint += ")"
+
+            warnings.warn(
+                "PyTorch/transformers not available; skipping XLM-R baseline. "
+                "Install the optional dependencies with `pip install -r "
+                "docs/requirements-transformers.txt`. "
+                f"Import error: {import_error}." + compatibility_hint + version_hint
+            )
+        else:
+            xlmr_id_eval, xlmr_ood_eval = evaluate_xlmr_classifier(
+                train_df.text.tolist(),
+                train_df.label.tolist(),
+                val_df.text.tolist(),
+                val_df.label.tolist(),
+                test_df.text.tolist(),
+                test_df.label.tolist(),
+                ood_df.text.tolist(),
+                ood_df.label.tolist(),
+                model_name=args.xlmr_model,
+                output_dir=args.xlmr_output_dir,
+                epochs=args.xlmr_epochs,
+                batch_size=args.xlmr_batch_size,
+                learning_rate=args.xlmr_learning_rate,
+                weight_decay=args.xlmr_weight_decay,
+            )
+            print(f"XLM-R in-distribution accuracy: {xlmr_id_eval['accuracy']:.4f}")
+            print(f"XLM-R macro OOD accuracy: {xlmr_ood_eval['accuracy']:.4f}")
+            results.append(
+                {
+                    "Model": "XLM-R fine-tuning",
+                    "ID Accuracy": xlmr_id_eval["accuracy"],
+                    "OOD Accuracy": xlmr_ood_eval["accuracy"],
+                }
+            )
 
     comparison = pd.DataFrame(results)
     comparison["Performance Drop"] = comparison["ID Accuracy"] - comparison["OOD Accuracy"]
