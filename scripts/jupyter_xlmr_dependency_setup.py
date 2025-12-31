@@ -14,7 +14,15 @@ from importlib import metadata
 from pathlib import Path
 from typing import Iterable
 
-REQUIREMENTS_FILE = Path(__file__).resolve().parent.parent / "docs" / "requirements-transformers.txt"
+try:
+    _SCRIPT_DIR = Path(__file__).resolve().parent
+except NameError:
+    # ``__file__`` is not defined when the script is executed directly in some
+    # notebook environments (e.g., ``%run``). Fall back to the current working
+    # directory so long as the repository layout is preserved.
+    _SCRIPT_DIR = Path.cwd() / "scripts"
+
+REQUIREMENTS_FILE = _SCRIPT_DIR.parent / "docs" / "requirements-transformers.txt"
 
 
 def _installed_version(package: str) -> str:
