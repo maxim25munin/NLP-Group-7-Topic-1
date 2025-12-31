@@ -95,13 +95,19 @@ try:  # pragma: no cover - heavy dependency initialisation
         # docs/requirements-transformers.txt so that users get actionable errors
         # when running the script with partially upgraded environments.
         min_hf_version = version.parse("0.34.0")
+        max_hf_version = version.parse("1.0.0")
         HUGGINGFACE_HUB_VERSION = huggingface_hub.__version__
         hf_version = version.parse(HUGGINGFACE_HUB_VERSION)
 
         if hf_version < min_hf_version:
             raise ImportError(
                 "huggingface_hub version is too old; please upgrade with "
-                "`pip install -U \"huggingface_hub>=0.34.0\"`."
+                "`pip install -U \"huggingface_hub>=0.34.0,<1.0\"`."
+            )
+        if hf_version >= max_hf_version:
+            raise ImportError(
+                "huggingface_hub version is too new for the installed transformers; "
+                "please downgrade with `pip install -U \"huggingface_hub<1.0\"`."
             )
 
     except ImportError:
@@ -127,7 +133,7 @@ try:  # pragma: no cover - heavy dependency initialisation
                 "The installed transformers build is incompatible with the current "
                 "huggingface_hub release. Upgrade transformers to >=4.45.0 (see "
                 "docs/requirements-transformers.txt) or install a compatible hub "
-                "release with ``pip install -U \"huggingface_hub>=0.34.0\"``."
+                "release with ``pip install -U \"huggingface_hub>=0.34.0,<1.0\"``."
             ) from exc
         raise
 
@@ -969,15 +975,22 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 if hf_version is not None and hf_version < version.parse("0.34.0"):
                     compatibility_hint = (
                         " Detected huggingface_hub version below 0.34.0. Upgrade with ``pip install -U "
-                        "\"huggingface_hub>=0.34.0\"`` or reinstall the optional dependencies "
+                        "\"huggingface_hub>=0.34.0,<1.0\"`` or reinstall the optional dependencies "
                         "with ``pip install -r docs/requirements-transformers.txt``."
+                    )
+                elif hf_version is not None and hf_version >= version.parse("1.0.0"):
+                    compatibility_hint = (
+                        " Detected a transformers/huggingface_hub version mismatch (hub >=1.0). "
+                        "Downgrade huggingface_hub with ``pip install -U \"huggingface_hub<1.0\"`` "
+                        "or reinstall the optional dependencies with ``pip install -r "
+                        "docs/requirements-transformers.txt`` to restore a compatible combination."
                     )
                 else:
                     compatibility_hint = (
                         " Detected a transformers/huggingface_hub version mismatch. Reinstall the "
-                        "optional dependencies with ``pip install -r docs/requirements-transformers.txt`` "
-                        "to restore a compatible combination."
-                    )
+                    "optional dependencies with ``pip install -r docs/requirements-transformers.txt`` "
+                    "to restore a compatible combination."
+                )
 
             version_hint = ""
             if TRANSFORMERS_VERSION or HUGGINGFACE_HUB_VERSION:
