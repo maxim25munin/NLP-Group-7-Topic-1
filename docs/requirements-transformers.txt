@@ -8,10 +8,11 @@
 torch>=2.1.0
 transformers>=4.45.0
 # The XLM-R baseline requires the Hugging Face Hub client. Versions in the
-# 0.34.x–0.99.x range are compatible with recent ``transformers`` releases
-# (4.45.0+). Older hub builds lack APIs that ``transformers`` relies on and will
-# fail at import time, while hub 1.x introduces breaking changes for current
-# ``transformers`` releases.
-huggingface_hub>=0.34.0,<1.0
+# 0.34.x+ range are compatible with recent ``transformers`` releases (4.45.0+).
+# Older hub builds lack APIs that ``transformers`` relies on and will fail at
+# import time. If you are stuck on an older ``transformers`` release (<4.45.0),
+# downgrade the hub client to <1.0 or upgrade ``transformers`` to a modern
+# version to use hub 1.x safely.
+huggingface_hub>=0.34.0,<2.0
 datasets>=2.16.0
 accelerate>=0.27.0
