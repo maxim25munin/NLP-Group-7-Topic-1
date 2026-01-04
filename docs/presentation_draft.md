@@ -41,6 +41,11 @@
 - **XLM-R fine-tuning:** comparable to the n-gram model with slightly better French/Swedish separation and minimal cross-script leakage.
   ![XLM-R fine-tuning confusion matrix](../reports/output_0_17.png)
 
+## fastText OOV coverage diagnostics
+- **Latvian vs. Yoruba fastText OOV rates (social media):** distributions highlight heavy tails and the prevalence of unseen terms, reinforcing the risk of deploying embeddings without character-level backups.
+  ![Latvian and Yoruba OOV histograms](../reports/output_5_0.png)
+- **Reproducibility:** generated via the notebook-style script `reports/latvian_yoruba_oov_histograms. run 4.1.2026.md`, which computes per-token OOV ratios from the OOD hate-speech corpus.
+
 ## Recommendations for stakeholders
 - **Primary baseline:** Character n-gram logistic regression for best accuracy–efficiency trade-off (Milestone 2).
 - **Diagnostic fallback:** Maintain rule-based heuristics for interpretability and rapid checks; extend with richer cues for Cyrillic variants.
@@ -48,6 +53,6 @@
 - **OOD coverage checks:** When using pretrained embeddings (e.g., fastText), audit OOV rates per target domain and pair with character-level features to mitigate brittleness.
 
 ## Next steps for the presentation
-- Include OOV histograms for Latvian and Yoruba to illustrate fastText coverage gaps.
+- Pair the Latvian/Yoruba OOV histograms with a brief takeaway on mitigation (character features, subword models).
 - Summarise deployment considerations (latency, hardware) for n-gram vs. XLM-R models.
 - Prepare speaker notes emphasising when to trade accuracy for interpretability or compute efficiency.
