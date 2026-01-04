@@ -33,6 +33,14 @@
 - XLM-R errors: swaps between Swahili/Wolof and German for borrowed-vocabulary sentences; over-indexing on high-resource patterns.
 - fastText OOD errors: short or transliterated posts (e.g., two-token Kazakh) mislabelled as Yoruba; OOV-driven fragility despite high accuracy.
 
+## Visual confusion matrices (10-language Wikipedia split)
+- **Rule-based heuristics:** confusion remains concentrated among closely related Latin-script languages, with Kazakh/Latvian/Yoruba bleeding into German but strong precision on Urdu thanks to script cues.
+  ![Rule-based heuristics confusion matrix](../reports/output_0_3.png)
+- **Character n-gram logistic regression:** errors shrink markedly; primary confusions cluster around English↔Swedish and occasional Yoruba overlap, while Cyrillic Kazakh is cleanly separated.
+  ![Character n-gram logistic regression confusion matrix](../reports/output_0_14.png)
+- **XLM-R fine-tuning:** comparable to the n-gram model with slightly better French/Swedish separation and minimal cross-script leakage.
+  ![XLM-R fine-tuning confusion matrix](../reports/output_0_17.png)
+
 ## Recommendations for stakeholders
 - **Primary baseline:** Character n-gram logistic regression for best accuracy–efficiency trade-off (Milestone 2).
 - **Diagnostic fallback:** Maintain rule-based heuristics for interpretability and rapid checks; extend with richer cues for Cyrillic variants.
@@ -40,7 +48,6 @@
 - **OOD coverage checks:** When using pretrained embeddings (e.g., fastText), audit OOV rates per target domain and pair with character-level features to mitigate brittleness.
 
 ## Next steps for the presentation
-- Add visual confusion matrices comparing baselines on the 10-language Wikipedia split.
 - Include OOV histograms for Latvian and Yoruba to illustrate fastText coverage gaps.
 - Summarise deployment considerations (latency, hardware) for n-gram vs. XLM-R models.
 - Prepare speaker notes emphasising when to trade accuracy for interpretability or compute efficiency.
