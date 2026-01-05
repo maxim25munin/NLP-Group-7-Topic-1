@@ -44,7 +44,7 @@
 ## fastText OOV coverage diagnostics
 - **Latvian vs. Yoruba fastText OOV rates (social media):** distributions highlight heavy tails and the prevalence of unseen terms, reinforcing the risk of deploying embeddings without character-level backups.
   ![Latvian and Yoruba OOV histograms](../reports/output_5_0.png)
-- **Mitigation takeaway:** treat the histogram spike of unseen tokens as a deployment red flag—pair fastText with character n-grams (as features or a backoff model) or swap to subword-aware embeddings to absorb rare/novel forms without relabelling efforts.
+- **Mitigation takeaway:** treat the histogram spike of unseen tokens as a deployment red flag—pair fastText with character n-grams (as features or a backoff model) or swap to subword-aware embeddings to absorb rare/novel forms without relabelling efforts. The `scripts/evaluate_ood_xlmr_vs_fasttext.py --enable-fasttext-char-backoff` flag now automates this by routing high-OOV sentences through a character n-gram classifier.
 - **Reproducibility:** generated via the notebook-style script `reports/latvian_yoruba_oov_histograms. run 4.1.2026.md`, which computes per-token OOV ratios from the OOD hate-speech corpus.
 
 ## Recommendations for stakeholders

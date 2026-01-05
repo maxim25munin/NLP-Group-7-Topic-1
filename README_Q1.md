@@ -24,6 +24,14 @@
 
 Use character n-gram features or contextual models (e.g., XLM-R) as baselines. If fastText is retained, pair it with character-level features, verify coverage on target domains, and report macro metrics to avoid overstating robustness on single-language OOD evaluations. The five-language hate-speech evaluation already surfaces coverage gaps (e.g., Latvian vs. Yoruba OOV), but expanding OOD sources further can strengthen per-language diagnostics and ensure fair comparisons across baselines.
 
+**Mitigation in practice.** The `scripts/evaluate_ood_xlmr_vs_fasttext.py` runner now supports `--enable-fasttext-char-backoff` to operationalise the histogram-driven mitigation: it measures OOV ratios per sentence, flags spikes, and automatically routes high-OOV samples through a character n-gram classifier instead of pure fastText embeddings. Toggle the switch (and optionally adjust `--oov-threshold`, default 0.35) to absorb rare or novel forms without relabelling effort:
+
+```bash
+python scripts/evaluate_ood_xlmr_vs_fasttext.py \
+  --enable-fasttext-char-backoff \
+  --oov-threshold 0.35
+```
+
 ## Hypothesis check: are pretrained fastText embeddings a safe non-DL baseline?
 
 The Q1 hypothesis warns that pretrained fastText embeddings may be brittle when repurposed as fixed features. The five-language OOD study mostly supports this caution: despite a modest 1.17-point accuracy drop from Wikipedia to hate-speech/social-media domains, the aggregate hides structural fragility. Latvian OOD accuracy falls to 0.9840 with a 24.1% OOV rate and 469,222 unseen terms, while Yoruba shows an even higher 37.9% OOV rate despite near-perfect accuracy—evidence that coverage gaps can resurface on more varied tasks.[^setup][^ood-results][^oov] The manual errors—short Kazakh posts mislabeled as Yoruba—underline how transliteration and sparse context can still derail the embeddings.[^error-examples] In sum, while headline metrics look strong, the error modes and OOV skew validate the hypothesis: pretrained fastText vectors alone are not a dependable non-DL baseline without complementary character-level features and per-domain coverage checks. The XLM-R check further shows that a lightly tuned contextual model is not automatically safer: with only one epoch of fine-tuning it drops 5.19 points OOD versus fastText's 1.16-point dip, reinforcing that OOD resilience depends on training depth and domain coverage, not model family alone.[^xlmr-summary]
