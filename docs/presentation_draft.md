@@ -47,9 +47,14 @@
 - **Mitigation takeaway:** treat the histogram spike of unseen tokens as a deployment red flag—pair fastText with character n-grams (as features or a backoff model) or swap to subword-aware embeddings to absorb rare/novel forms without relabelling efforts. The `scripts/evaluate_ood_xlmr_vs_fasttext.py --enable-fasttext-char-backoff` flag now automates this by routing high-OOV sentences through a character n-gram classifier.
 - **Reproducibility:** generated via the notebook-style script `reports/latvian_yoruba_oov_histograms. run 4.1.2026.md`, which computes per-token OOV ratios from the OOD hate-speech corpus.
 
-## Deployment considerations: latency and hardware
-- **Character n-gram logistic regression:** CPU-friendly; fits in memory on a laptop (model file ~10–20 MB) and serves sub-5 ms per sentence on a single core, enabling batch scoring without GPUs. Latency scales linearly with batch size and is gated by feature extraction rather than model math.
-- **XLM-R fine-tuning:** Requires GPU or high-core CPU for acceptable throughput; even `base` checkpoints need ~1–2 GB VRAM for inference (higher for batch >16). Expect 30–80 ms per sentence on an A10/T4; on CPU, latency can exceed 300 ms without quantization/distillation. Plan for batching, model quantization, or distillation to keep latency predictable.
+## Deployment considerations: latency vs. hardware
+- **Character n-gram (TF–IDF + logistic regression)**
+  - **Hardware:** CPU-only; 10–20 MB model fits in laptop memory.
+  - **Latency:** ~<5 ms/sentence on a single core; scales linearly with batch size, dominated by feature extraction.
+- **XLM-R fine-tuning**
+  - **Hardware:** GPU recommended; `base` needs ~1–2 GB VRAM for inference (more for batch >16). CPU-only runs are slow.
+  - **Latency:** ~30–80 ms/sentence on an A10/T4 GPU; 300 ms+ on CPU without quantization or distillation.
+- **Deployment takeaway:** Default to the n-gram model for general serving and on-CPU environments; reserve XLM-R for domain-shifted or robustness-critical deployments where the added latency and GPU cost are acceptable.
 
 ## Recommendations for stakeholders
 - **Primary baseline:** Character n-gram logistic regression for best accuracy–efficiency trade-off (Milestone 2).
@@ -59,5 +64,5 @@
 
 ## Next steps for the presentation
 - Pair the Latvian/Yoruba OOV histograms with a brief takeaway on mitigation (character features, subword models).
-- Review and position the deployment considerations slide for n-gram vs. XLM-R latency/hardware trade-offs.
+- Slot the latency/hardware slide immediately after key results to frame accuracy vs. compute trade-offs before recommendations.
 - Prepare speaker notes emphasising when to trade accuracy for interpretability or compute efficiency.
