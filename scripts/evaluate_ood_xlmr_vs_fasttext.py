@@ -16,6 +16,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 from packaging import version
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -102,6 +103,10 @@ def _lazy_import_transformers_stack() -> bool:  # pragma: no cover - optional de
 RANDOM_SEED = 13
 random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
+
+
+# Cache fastText vocabularies to avoid repeatedly materialising large lists
+_FASTTEXT_VOCAB_CACHE: Dict[int, set[str]] = {}
 
 
 @dataclass
@@ -216,6 +221,26 @@ def get_sentence_embedding(text: str, model: fasttext.FastText._FastText) -> np.
     return np.mean(vectors, axis=0)
 
 
+def get_fasttext_vocab(model: fasttext.FastText._FastText) -> set[str]:
+    """Return the cached vocabulary set for a fastText model."""
+
+    key = id(model)
+    if key not in _FASTTEXT_VOCAB_CACHE:
+        _FASTTEXT_VOCAB_CACHE[key] = set(model.get_words())
+    return _FASTTEXT_VOCAB_CACHE[key]
+
+
+def token_oov_fraction(text: str, model: fasttext.FastText._FastText) -> float:
+    """Compute the fraction of tokens missing from the fastText vocabulary."""
+
+    tokens = text.split()
+    if not tokens:
+        return 0.0
+    vocab = get_fasttext_vocab(model)
+    missing = sum(1 for tok in tokens if tok not in vocab)
+    return missing / len(tokens)
+
+
 def extract_fasttext_features(
     texts: Sequence[str],
     models: Dict[str, fasttext.FastText._FastText],
@@ -276,6 +301,136 @@ def evaluate_fasttext_classifier(
     report = classification_report(labels, preds, output_dict=True, zero_division=0)
     cm = confusion_matrix(labels, preds, labels=sorted(set(labels) | set(preds)))
     return {"accuracy": acc, "report": report, "confusion_matrix": cm.tolist(), "predictions": preds}
+
+
+def compute_oov_ratios(
+    texts: Sequence[str],
+    models: Dict[str, fasttext.FastText._FastText],
+    language_labels: Optional[Sequence[str]] = None,
+    language_hint: Optional[str] = None,
+) -> pd.Series:
+    """Return per-sentence OOV fractions using language-specific vocabularies."""
+
+    if language_hint:
+        if language_hint not in models:
+            raise ValueError(f"language_hint={language_hint!r} not found in loaded models: {sorted(models)}")
+        default_model = models[language_hint]
+    else:
+        default_model = None
+
+    ratios: List[float] = []
+    for i, text in enumerate(texts):
+        if language_labels is not None and i < len(language_labels):
+            lang = language_labels[i]
+            if lang not in models:
+                raise ValueError(
+                    f"No fastText model loaded for language {lang!r}. Provide a language_hint or load the missing model."
+                )
+            model = models[lang]
+        elif default_model is not None:
+            model = default_model
+        else:
+            raise ValueError(
+                "No language labels were provided and no language_hint was set; cannot select a fastText model for OOV analysis."
+            )
+        ratios.append(token_oov_fraction(text, model))
+    return pd.Series(ratios)
+
+
+def summarise_oov_spike(oov_ratios: pd.Series, label: str, threshold: float) -> None:
+    """Log basic statistics and a red-flag warning if OOV ratios spike."""
+
+    quantiles = oov_ratios.quantile([0.5, 0.9, 0.95, 0.99])
+    print(
+        f"OOV ratios for {label}: mean={oov_ratios.mean():.3f}, median={quantiles.loc[0.5]:.3f}, "
+        f"p90={quantiles.loc[0.9]:.3f}, p95={quantiles.loc[0.95]:.3f}, max={oov_ratios.max():.3f}"
+    )
+    if quantiles.loc[0.9] >= threshold:
+        print(
+            f"⚠️  High OOV spike detected for {label}: 90th percentile {quantiles.loc[0.9]:.2f} >= {threshold}. "
+            "Enable the character n-gram backoff to absorb rare/novel forms."
+        )
+
+
+class FastTextCharBackoffClassifier:
+    """Hybrid classifier that backs off to character n-grams on OOV-heavy sentences."""
+
+    def __init__(self, models: Dict[str, fasttext.FastText._FastText], oov_threshold: float = 0.35) -> None:
+        self.models = models
+        self.oov_threshold = oov_threshold
+        self.fasttext_clf = LogisticRegression(max_iter=1000, multi_class="multinomial", solver="lbfgs")
+        self.vectorizer = TfidfVectorizer(analyzer="char", ngram_range=(3, 5), lowercase=True, min_df=2)
+        self.char_clf = LogisticRegression(max_iter=1000, multi_class="auto", solver="lbfgs")
+
+    def fit(self, texts: Sequence[str], labels: Sequence[str]) -> None:
+        ft_features = extract_fasttext_features(texts, self.models, language_labels=labels)
+        self.fasttext_clf.fit(ft_features, labels)
+        char_features = self.vectorizer.fit_transform(texts)
+        self.char_clf.fit(char_features, labels)
+
+    def predict(
+        self,
+        texts: Sequence[str],
+        labels: Sequence[str],
+        language_hint: Optional[str] = None,
+    ) -> Tuple[List[str], List[float]]:
+        """Return predictions and OOV ratios; backs off when ratios exceed the threshold."""
+
+        char_features = self.vectorizer.transform(texts)
+        char_preds = self.char_clf.predict(char_features)
+        ft_features = extract_fasttext_features(texts, self.models, language_labels=labels, language_hint=language_hint)
+        ft_preds = self.fasttext_clf.predict(ft_features)
+
+        if language_hint:
+            if language_hint not in self.models:
+                raise ValueError(
+                    f"language_hint={language_hint!r} not found in loaded models: {sorted(self.models)}"
+                )
+            default_model = self.models[language_hint]
+        else:
+            default_model = None
+
+        combined: List[str] = []
+        ratios: List[float] = []
+        for i, text in enumerate(texts):
+            if i < len(labels):
+                lang = labels[i]
+                if lang not in self.models:
+                    raise ValueError(
+                        f"No fastText model loaded for language {lang!r}. Provide a language_hint or load the missing model."
+                    )
+                model = self.models[lang]
+            elif default_model is not None:
+                model = default_model
+            else:
+                raise ValueError(
+                    "No language labels were provided and no language_hint was set; cannot select a fastText model for OOV analysis."
+                )
+            ratio = token_oov_fraction(text, model)
+            ratios.append(ratio)
+            combined.append(char_preds[i] if ratio >= self.oov_threshold else ft_preds[i])
+        return combined, ratios
+
+
+def evaluate_fasttext_backoff_classifier(
+    clf: FastTextCharBackoffClassifier,
+    texts: Sequence[str],
+    labels: Sequence[str],
+    models: Dict[str, fasttext.FastText._FastText],
+    language_hint: Optional[str] = None,
+) -> Dict[str, object]:
+    preds, oov_ratios = clf.predict(texts, labels, language_hint=language_hint)
+    acc = accuracy_score(labels, preds)
+    report = classification_report(labels, preds, output_dict=True, zero_division=0)
+    cm = confusion_matrix(labels, preds, labels=sorted(set(labels) | set(preds)))
+    summarise_oov_spike(pd.Series(oov_ratios), label="eval split", threshold=clf.oov_threshold)
+    return {
+        "accuracy": acc,
+        "report": report,
+        "confusion_matrix": cm.tolist(),
+        "predictions": preds,
+        "oov_ratios": oov_ratios,
+    }
 
 
 def collect_misclassifications(
@@ -484,6 +639,20 @@ def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default={"kazakh": "kk", "latvian": "lv", "swedish": "sv", "yoruba": "yo", "urdu": "ur"},
         help="JSON mapping of language -> ISO code used to locate cc.<code>.300.bin files.",
     )
+    parser.add_argument(
+        "--enable-fasttext-char-backoff",
+        action="store_true",
+        help=(
+            "Enable a hybrid fastText + character n-gram classifier that backs off when the OOV histogram spikes. "
+            "This implements the mitigation recommendation for unseen-token heavy domains."
+        ),
+    )
+    parser.add_argument(
+        "--oov-threshold",
+        type=float,
+        default=0.35,
+        help="OOV ratio threshold that triggers the character n-gram backoff (0.35 = 35% unseen tokens).",
+    )
     parser.add_argument("--max-sentences", type=int, default=2000, help="Cap sentences per language for Wikipedia data.")
     parser.add_argument("--xlmr-model", type=str, default="xlm-roberta-base", help="Hugging Face model name for XLM-RoBERTa.")
     parser.add_argument("--xlmr-epochs", type=int, default=1, help="Number of fine-tuning epochs.")
@@ -573,6 +742,15 @@ def main() -> None:
     )
     print(f"fastText macro OOD accuracy: {combined_ood_eval['accuracy']:.4f}")
 
+    combined_ood_oov = compute_oov_ratios(
+        ood_df.text.tolist(), fasttext_models, language_labels=ood_df.label.tolist()
+    )
+    summarise_oov_spike(
+        combined_ood_oov,
+        label="combined OOD (fastText vocab)",
+        threshold=args.oov_threshold,
+    )
+
     results = [
         {
             "Model": "fastText + LogisticRegression",
@@ -580,6 +758,50 @@ def main() -> None:
             "OOD Accuracy": combined_ood_eval["accuracy"],
         }
     ]
+
+    if args.enable_fasttext_char_backoff:
+        print("\nTraining hybrid fastText + character n-gram backoff classifier...")
+        backoff_clf = FastTextCharBackoffClassifier(fasttext_models, oov_threshold=args.oov_threshold)
+        backoff_clf.fit(train_df.text.tolist(), train_df.label.tolist())
+
+        backoff_id_eval = evaluate_fasttext_backoff_classifier(
+            backoff_clf, test_df.text.tolist(), test_df.label.tolist(), fasttext_models
+        )
+        print(
+            f"Hybrid fastText+char n-gram in-distribution accuracy: {backoff_id_eval['accuracy']:.4f}"
+        )
+
+        for lang, df in sorted(ood_sets.items()):
+            ood_eval = evaluate_fasttext_backoff_classifier(
+                backoff_clf,
+                df.text.tolist(),
+                df.label.tolist(),
+                fasttext_models,
+                language_hint=lang,
+            )
+            trigger_rate = float(np.mean(np.array(ood_eval["oov_ratios"]) >= backoff_clf.oov_threshold))
+            print(
+                f"Hybrid OOD accuracy ({lang}): {ood_eval['accuracy']:.4f} "
+                f"(backoff on {trigger_rate:.1%} of samples)"
+            )
+
+        backoff_combined_eval = evaluate_fasttext_backoff_classifier(
+            backoff_clf, ood_df.text.tolist(), ood_df.label.tolist(), fasttext_models
+        )
+        backoff_trigger_rate = float(
+            np.mean(np.array(backoff_combined_eval["oov_ratios"]) >= backoff_clf.oov_threshold)
+        )
+        print(
+            f"Hybrid fastText+char n-gram macro OOD accuracy: {backoff_combined_eval['accuracy']:.4f} "
+            f"(backoff on {backoff_trigger_rate:.1%} of OOD samples)"
+        )
+        results.append(
+            {
+                "Model": "fastText + char n-gram backoff",
+                "ID Accuracy": backoff_id_eval["accuracy"],
+                "OOD Accuracy": backoff_combined_eval["accuracy"],
+            }
+        )
 
     if args.skip_xlmr:
         print("Skipping XLM-R evaluation (per --skip-xlmr).")
