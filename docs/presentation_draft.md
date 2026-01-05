@@ -56,4 +56,6 @@
 ## Next steps for the presentation
 - Pair the Latvian/Yoruba OOV histograms with a brief takeaway on mitigation (character features, subword models).
 - Summarise deployment considerations (latency, hardware) for n-gram vs. XLM-R models.
+  - **Character n-gram logistic regression:** CPU-friendly; fits in memory on a laptop (model file ~10–20 MB) and serves sub-5 ms per sentence on a single core, enabling batch scoring without GPUs. Latency scales linearly with batch size and is gated by feature extraction rather than model math.
+  - **XLM-R fine-tuning:** Requires GPU or high-core CPU for acceptable throughput; even `base` checkpoints need ~1–2 GB VRAM for inference (higher for batch >16). Expect 30–80 ms per sentence on an A10/T4; on CPU, latency can exceed 300 ms without quantization/distillation. Plan for batching, model quantization, or distillation to keep latency predictable.
 - Prepare speaker notes emphasising when to trade accuracy for interpretability or compute efficiency.
