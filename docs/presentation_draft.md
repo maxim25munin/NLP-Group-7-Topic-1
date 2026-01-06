@@ -56,6 +56,19 @@
 - **Diagnostic takeaway (current script):** the histograms signal where fastText alone is fragile due to high OOV rates. Our evaluation script (`scripts/evaluate_ood_xlmr_vs_fasttext.py`) is the pre-mitigation version, so mitigation remains a manual recommendation rather than an automated flag.
 - **Reproducibility:** generated via the notebook-style script `reports/latvian_yoruba_oov_histograms. run 4.1.2026.md`, which computes per-token OOV ratios from the OOD hate-speech corpus.
 
+## Mitigation plan: character features and subword models
+- **What:** Reduce OOV brittleness by moving from pure word embeddings to tokenization schemes that always produce features.
+  - **Character n-gram features:** fall back to the TF–IDF character n-gram pipeline already used for Wikipedia benchmarking; guarantees coverage for unseen words and transliterations.
+  - **Subword models (BPE/SentencePiece):** swap fastText vectors for a subword-aware encoder (e.g., BPEmb or a distilled multilingual transformer); minimizes vocabulary gaps while keeping model size moderate.
+- **Why it matters:** The OOD hate-speech set shows high OOV rates (24%+ for Latvian, 37%+ for Yoruba). Word-only embeddings drop tokens entirely, masking confusion and inflating confidence. Character/subword features ensure every token contributes signal.
+- **How to wire into the evaluation script (`scripts/evaluate_ood_xlmr_vs_fasttext.py`):**
+  1) **Add a character-feature branch:** load the existing char n-gram vectorizer and logistic regression model (from Milestone 2 artifacts) and route OOD text through it alongside fastText/XLM-R. Aggregate metrics per model to compare robustness.
+  2) **Introduce a subword encoder:** replace the fastText embedding lookup with a SentencePiece/BPE tokenizer plus an average-pooled embedding (or compact transformer). Cache the tokenizer/model weights on disk and update the data loader to emit subword tokens.
+  3) **Flag OOV tokens explicitly:** log OOV counts per sentence for the word-embedding path; surface them in the evaluation summary to show mitigation impact.
+  4) **CLI toggles:** add `--use-char` and `--use-subword` flags to switch baselines; default to fastText for parity with prior results but enable side-by-side runs.
+  5) **Outputs:** extend the metrics dataframe to include the new baselines and write confusion matrices for each. Add a short note in the plot titles indicating whether mitigation is enabled.
+- **Slide takeaway:** Coverage-focused mitigation is actionable now: load the char n-gram baseline, drop in a subword encoder, expose flags, and report OOV-aware metrics so production can choose the safest model for noisy domains.
+
 ## Recommendations for stakeholders
 - **Primary baseline:** Character n-gram logistic regression for best accuracy–efficiency trade-off (Milestone 2).
 - **Diagnostic fallback:** Maintain rule-based heuristics for interpretability and rapid checks; extend with richer cues for Cyrillic variants.
