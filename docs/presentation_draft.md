@@ -53,16 +53,16 @@
 ## fastText OOV coverage diagnostics
 - **Latvian vs. Yoruba fastText OOV rates (social media):** distributions highlight heavy tails and the prevalence of unseen terms, reinforcing the risk of deploying embeddings without character-level backups.
   ![Latvian and Yoruba OOV histograms](../reports/output_5_0.png)
-- **Mitigation takeaway:** treat the histogram spike of unseen tokens as a deployment red flag—pair fastText with character n-grams (as features or a backoff model) or swap to subword-aware embeddings to absorb rare/novel forms without relabelling efforts. The `scripts/evaluate_ood_xlmr_vs_fasttext.py --enable-fasttext-char-backoff` flag now automates this by routing high-OOV sentences through a character n-gram classifier.
+- **Diagnostic takeaway (current script):** the histograms signal where fastText alone is fragile due to high OOV rates. Our evaluation script (`scripts/evaluate_ood_xlmr_vs_fasttext.py`) is the pre-mitigation version, so mitigation remains a manual recommendation rather than an automated flag.
 - **Reproducibility:** generated via the notebook-style script `reports/latvian_yoruba_oov_histograms. run 4.1.2026.md`, which computes per-token OOV ratios from the OOD hate-speech corpus.
 
 ## Recommendations for stakeholders
 - **Primary baseline:** Character n-gram logistic regression for best accuracy–efficiency trade-off (Milestone 2).
 - **Diagnostic fallback:** Maintain rule-based heuristics for interpretability and rapid checks; extend with richer cues for Cyrillic variants.
 - **High-performance/shifted domains:** Deploy XLM-R when domain shift or code-switching warrants transformer robustness, accepting higher compute costs.
-- **OOD coverage checks:** When using pretrained embeddings (e.g., fastText), audit OOV rates per target domain and pair with character-level features to mitigate brittleness.
+- **OOD coverage checks:** When using pretrained embeddings (e.g., fastText), audit OOV rates per target domain and pair with character-level features to mitigate brittleness; mitigation is not yet built into the evaluation script.
 
 ## Next steps for the presentation
-- Pair the Latvian/Yoruba OOV histograms with a brief takeaway on mitigation (character features, subword models).
+- Pair the Latvian/Yoruba OOV histograms with a note that mitigation (character features, subword models) is currently manual and not yet wired into the evaluation script.
 - Confirm the latency/hardware slide placement after key results to frame accuracy vs. compute trade-offs before recommendations.
 - Prepare speaker notes emphasising when to trade accuracy for interpretability or compute efficiency.
