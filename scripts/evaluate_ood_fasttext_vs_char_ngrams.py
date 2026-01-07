@@ -18,6 +18,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
@@ -231,6 +232,53 @@ def train_char_ngram_classifier(
     return vectorizer, clf
 
 
+def build_combined_features(
+    texts: Sequence[str],
+    models: Dict[str, fasttext.FastText._FastText],
+    vectorizer: TfidfVectorizer,
+    labels: Optional[Sequence[str]] = None,
+    language_hint: Optional[str] = None,
+) -> sparse.csr_matrix:
+    fasttext_features = extract_fasttext_features(texts, models, language_labels=labels, language_hint=language_hint)
+    char_features = vectorizer.transform(texts)
+    fasttext_sparse = sparse.csr_matrix(fasttext_features)
+    return sparse.hstack([fasttext_sparse, char_features], format="csr")
+
+
+def train_combined_classifier(
+    train_texts: Sequence[str],
+    train_labels: Sequence[str],
+    models: Dict[str, fasttext.FastText._FastText],
+    vectorizer: TfidfVectorizer,
+) -> LogisticRegression:
+    features = build_combined_features(train_texts, models, vectorizer, labels=train_labels)
+    clf = LogisticRegression(max_iter=1000, multi_class="multinomial", solver="lbfgs")
+    clf.fit(features, train_labels)
+    return clf
+
+
+def evaluate_combined_classifier(
+    clf: LogisticRegression,
+    texts: Sequence[str],
+    labels: Sequence[str],
+    models: Dict[str, fasttext.FastText._FastText],
+    vectorizer: TfidfVectorizer,
+    language_hint: Optional[str] = None,
+) -> Dict[str, object]:
+    language_labels = None if language_hint else labels
+    features = build_combined_features(texts, models, vectorizer, labels=language_labels, language_hint=language_hint)
+    preds = clf.predict(features)
+    acc = accuracy_score(labels, preds)
+    report = classification_report(labels, preds, output_dict=True, zero_division=0)
+    cm = confusion_matrix(labels, preds, labels=sorted(set(labels) | set(preds)))
+    return {
+        "accuracy": acc,
+        "report": report,
+        "confusion_matrix": cm.tolist(),
+        "predictions": preds,
+    }
+
+
 def evaluate_char_ngram_classifier(
     vectorizer: TfidfVectorizer,
     clf: LogisticRegression,
@@ -260,6 +308,48 @@ def summarize_metrics(name: str, eval_result: Dict[str, object]) -> Dict[str, fl
         "Macro Recall": macro.get("recall", 0.0),
         "Macro F1": macro.get("f1-score", 0.0),
     }
+
+
+def build_visualization(summary_df: pd.DataFrame, output_path: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    melted = summary_df.melt(id_vars=["Model"], var_name="Metric", value_name="Score")
+    metric_order = ["Accuracy", "Macro Precision", "Macro Recall", "Macro F1"]
+    melted["Metric"] = pd.Categorical(melted["Metric"], categories=metric_order, ordered=True)
+    melted = melted.sort_values(["Metric", "Model"])
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharey=True)
+    axes = axes.ravel()
+    colors = {
+        "fastText + LogisticRegression (ID)": "#1f77b4",
+        "Char n-gram + LogisticRegression (ID)": "#2ca02c",
+        "fastText + Char n-gram (ID)": "#9467bd",
+        "fastText + LogisticRegression (OOD)": "#ff7f0e",
+        "Char n-gram + LogisticRegression (OOD)": "#d62728",
+        "fastText + Char n-gram (OOD)": "#8c564b",
+    }
+
+    for ax, metric in zip(axes, metric_order):
+        subset = melted[melted["Metric"] == metric]
+        ax.bar(
+            subset["Model"],
+            subset["Score"],
+            color=[colors.get(model, "#333333") for model in subset["Model"]],
+        )
+        ax.set_title(metric)
+        ax.set_ylim(0, 1)
+        ax.tick_params(axis="x", rotation=30, labelsize=8)
+        ax.grid(axis="y", linestyle="--", alpha=0.3)
+
+    fig.suptitle(
+        "Insight: Headline accuracy masks coverage fragility — pair fastText with character-level features\n"
+        "Report macro metrics for OOD robustness",
+        fontsize=12,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
 def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -304,6 +394,12 @@ def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=int,
         default=200000,
         help="Maximum number of character features (lower this for faster notebook runs).",
+    )
+    parser.add_argument(
+        "--plot-path",
+        type=str,
+        default="reports/ood_fasttext_char_summary.png",
+        help="Output path for the metrics visualization (set to empty to skip).",
     )
     known_args, unknown_args = parser.parse_known_args(args=args)
     if unknown_args:
@@ -368,14 +464,21 @@ def main() -> None:
         min_df=args.char_min_df,
         max_features=args.char_max_features,
     )
+    combined_clf = train_combined_classifier(
+        train_df.text.tolist(), train_df.label.tolist(), fasttext_models, char_vectorizer
+    )
 
     id_fasttext = evaluate_fasttext_classifier(
         fasttext_clf, test_df.text.tolist(), test_df.label.tolist(), fasttext_models
     )
     id_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, test_df.text.tolist(), test_df.label.tolist())
+    id_combined = evaluate_combined_classifier(
+        combined_clf, test_df.text.tolist(), test_df.label.tolist(), fasttext_models, char_vectorizer
+    )
 
     print(f"fastText in-distribution accuracy: {id_fasttext['accuracy']:.4f}")
     print(f"Char n-gram in-distribution accuracy: {id_char['accuracy']:.4f}")
+    print(f"fastText + Char n-gram in-distribution accuracy: {id_combined['accuracy']:.4f}")
 
     for lang, df in sorted(ood_sets.items()):
         ood_fasttext = evaluate_fasttext_classifier(
@@ -386,6 +489,14 @@ def main() -> None:
             language_hint=lang,
         )
         ood_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, df.text.tolist(), df.label.tolist())
+        ood_combined = evaluate_combined_classifier(
+            combined_clf,
+            df.text.tolist(),
+            df.label.tolist(),
+            fasttext_models,
+            char_vectorizer,
+            language_hint=lang,
+        )
         print(
             "fastText OOD ({lang}) accuracy: {acc:.4f} | macro F1: {f1:.4f}".format(
                 lang=lang,
@@ -400,11 +511,21 @@ def main() -> None:
                 f1=ood_char["report"]["macro avg"]["f1-score"],
             )
         )
+        print(
+            "fastText + Char n-gram OOD ({lang}) accuracy: {acc:.4f} | macro F1: {f1:.4f}".format(
+                lang=lang,
+                acc=ood_combined["accuracy"],
+                f1=ood_combined["report"]["macro avg"]["f1-score"],
+            )
+        )
 
     combined_fasttext = evaluate_fasttext_classifier(
         fasttext_clf, ood_df.text.tolist(), ood_df.label.tolist(), fasttext_models
     )
     combined_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, ood_df.text.tolist(), ood_df.label.tolist())
+    combined_combined = evaluate_combined_classifier(
+        combined_clf, ood_df.text.tolist(), ood_df.label.tolist(), fasttext_models, char_vectorizer
+    )
 
     print(
         "fastText macro OOD accuracy: {acc:.4f} | macro F1: {f1:.4f}".format(
@@ -418,17 +539,30 @@ def main() -> None:
             f1=combined_char["report"]["macro avg"]["f1-score"],
         )
     )
+    print(
+        "fastText + Char n-gram macro OOD accuracy: {acc:.4f} | macro F1: {f1:.4f}".format(
+            acc=combined_combined["accuracy"],
+            f1=combined_combined["report"]["macro avg"]["f1-score"],
+        )
+    )
 
     results = [
         summarize_metrics("fastText + LogisticRegression (ID)", id_fasttext),
         summarize_metrics("Char n-gram + LogisticRegression (ID)", id_char),
+        summarize_metrics("fastText + Char n-gram (ID)", id_combined),
         summarize_metrics("fastText + LogisticRegression (OOD)", combined_fasttext),
         summarize_metrics("Char n-gram + LogisticRegression (OOD)", combined_char),
+        summarize_metrics("fastText + Char n-gram (OOD)", combined_combined),
     ]
 
     comparison = pd.DataFrame(results)
     print("\nSummary:")
     print(comparison.to_string(index=False))
+
+    plot_path = Path(args.plot_path) if args.plot_path else None
+    if plot_path:
+        build_visualization(comparison, plot_path)
+        print(f"Saved metrics visualization to {plot_path}")
 
 
 if __name__ == "__main__":
