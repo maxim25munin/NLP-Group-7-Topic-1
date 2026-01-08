@@ -151,6 +151,7 @@ def extract_fasttext_features(
     models: Dict[str, fasttext.FastText._FastText],
     language_labels: Optional[Sequence[str]] = None,
     language_hint: Optional[str] = None,
+    default_language: Optional[str] = None,
 ) -> np.ndarray:
     """Convert sentences to feature matrices using language-specific models."""
 
@@ -158,6 +159,12 @@ def extract_fasttext_features(
         if language_hint not in models:
             raise ValueError(f"language_hint={language_hint!r} not found in loaded models: {sorted(models)}")
         default_model = models[language_hint]
+    elif default_language:
+        if default_language not in models:
+            raise ValueError(
+                f"default_language={default_language!r} not found in loaded models: {sorted(models)}"
+            )
+        default_model = models[default_language]
     else:
         default_model = None
 
@@ -175,7 +182,8 @@ def extract_fasttext_features(
             model = default_model
         else:
             raise ValueError(
-                "No language labels were provided and no language_hint was set; cannot select a fastText model for embedding."
+                "No language labels were provided and no language_hint/default_language was set; "
+                "cannot select a fastText model for embedding."
             )
         features.append(get_sentence_embedding(text, model))
     return np.vstack(features)
@@ -198,9 +206,15 @@ def evaluate_fasttext_classifier(
     labels: Sequence[str],
     models: Dict[str, fasttext.FastText._FastText],
     language_hint: Optional[str] = None,
+    default_language: Optional[str] = None,
 ) -> Dict[str, object]:
-    language_labels = None if language_hint else labels
-    features = extract_fasttext_features(texts, models, language_labels=language_labels, language_hint=language_hint)
+    features = extract_fasttext_features(
+        texts,
+        models,
+        language_labels=None,
+        language_hint=language_hint,
+        default_language=default_language,
+    )
     preds = clf.predict(features)
     acc = accuracy_score(labels, preds)
     report = classification_report(labels, preds, output_dict=True, zero_division=0)
@@ -238,8 +252,15 @@ def build_combined_features(
     vectorizer: TfidfVectorizer,
     labels: Optional[Sequence[str]] = None,
     language_hint: Optional[str] = None,
+    default_language: Optional[str] = None,
 ) -> sparse.csr_matrix:
-    fasttext_features = extract_fasttext_features(texts, models, language_labels=labels, language_hint=language_hint)
+    fasttext_features = extract_fasttext_features(
+        texts,
+        models,
+        language_labels=labels,
+        language_hint=language_hint,
+        default_language=default_language,
+    )
     char_features = vectorizer.transform(texts)
     fasttext_sparse = sparse.csr_matrix(fasttext_features)
     return sparse.hstack([fasttext_sparse, char_features], format="csr")
@@ -264,9 +285,16 @@ def evaluate_combined_classifier(
     models: Dict[str, fasttext.FastText._FastText],
     vectorizer: TfidfVectorizer,
     language_hint: Optional[str] = None,
+    default_language: Optional[str] = None,
 ) -> Dict[str, object]:
-    language_labels = None if language_hint else labels
-    features = build_combined_features(texts, models, vectorizer, labels=language_labels, language_hint=language_hint)
+    features = build_combined_features(
+        texts,
+        models,
+        vectorizer,
+        labels=None,
+        language_hint=language_hint,
+        default_language=default_language,
+    )
     preds = clf.predict(features)
     acc = accuracy_score(labels, preds)
     report = classification_report(labels, preds, output_dict=True, zero_division=0)
@@ -383,6 +411,15 @@ def parse_args(args: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default={"kazakh": "kk", "latvian": "lv", "swedish": "sv", "yoruba": "yo", "urdu": "ur"},
         help="JSON mapping of language -> ISO code used to locate cc.<code>.300.bin files.",
     )
+    parser.add_argument(
+        "--fasttext-default-language",
+        type=str,
+        default=None,
+        help=(
+            "Language key to use for fastText embeddings when labels are unavailable. "
+            "Set this to a multilingual model if you have one."
+        ),
+    )
     parser.add_argument("--max-sentences", type=int, default=2000, help="Cap sentences per language for Wikipedia data.")
     parser.add_argument("--test-size", type=float, default=0.2, help="Test proportion for Wikipedia data.")
     parser.add_argument("--val-size", type=float, default=0.1, help="Validation proportion taken from the training split.")
@@ -456,6 +493,15 @@ def main() -> None:
     fasttext_models = load_fasttext_models(args.fasttext_model_dir, languages=args.languages, code_lookup=fasttext_codes)
     print(f"Loaded fastText models for: {', '.join(sorted(fasttext_models))}")
 
+    default_language = args.fasttext_default_language
+    if default_language is None:
+        default_language = sorted(fasttext_models)[0]
+        warnings.warn(
+            "fastText evaluations now avoid using true labels to pick models. "
+            f"Using {default_language!r} for all label-agnostic evaluations; "
+            "set --fasttext-default-language to override."
+        )
+
     fasttext_clf = train_fasttext_classifier(train_df.text.tolist(), train_df.label.tolist(), fasttext_models)
     char_vectorizer, char_clf = train_char_ngram_classifier(
         train_df.text.tolist(),
@@ -469,11 +515,20 @@ def main() -> None:
     )
 
     id_fasttext = evaluate_fasttext_classifier(
-        fasttext_clf, test_df.text.tolist(), test_df.label.tolist(), fasttext_models
+        fasttext_clf,
+        test_df.text.tolist(),
+        test_df.label.tolist(),
+        fasttext_models,
+        default_language=default_language,
     )
     id_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, test_df.text.tolist(), test_df.label.tolist())
     id_combined = evaluate_combined_classifier(
-        combined_clf, test_df.text.tolist(), test_df.label.tolist(), fasttext_models, char_vectorizer
+        combined_clf,
+        test_df.text.tolist(),
+        test_df.label.tolist(),
+        fasttext_models,
+        char_vectorizer,
+        default_language=default_language,
     )
 
     print(f"fastText in-distribution accuracy: {id_fasttext['accuracy']:.4f}")
@@ -520,11 +575,20 @@ def main() -> None:
         )
 
     combined_fasttext = evaluate_fasttext_classifier(
-        fasttext_clf, ood_df.text.tolist(), ood_df.label.tolist(), fasttext_models
+        fasttext_clf,
+        ood_df.text.tolist(),
+        ood_df.label.tolist(),
+        fasttext_models,
+        default_language=default_language,
     )
     combined_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, ood_df.text.tolist(), ood_df.label.tolist())
     combined_combined = evaluate_combined_classifier(
-        combined_clf, ood_df.text.tolist(), ood_df.label.tolist(), fasttext_models, char_vectorizer
+        combined_clf,
+        ood_df.text.tolist(),
+        ood_df.label.tolist(),
+        fasttext_models,
+        char_vectorizer,
+        default_language=default_language,
     )
 
     print(
