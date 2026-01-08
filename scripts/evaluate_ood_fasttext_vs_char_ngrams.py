@@ -117,20 +117,31 @@ def load_hate_speech_dataset(
     return df[["text", "label", domain_col]]
 
 
+def load_fasttext_model(
+    model_dir: Path, language: str, code_lookup: Optional[Dict[str, str]] = None
+) -> Optional[fasttext.FastText._FastText]:
+    """Load a single fastText model for a language key."""
+
+    code_lookup = code_lookup or {}
+    code = code_lookup.get(language, language[:2])
+    path = model_dir / f"cc.{code}.300.bin"
+    if not path.exists():
+        warnings.warn(f"Missing fastText model: {path}")
+        return None
+    return fasttext.load_model(path.as_posix())
+
+
 def load_fasttext_models(
     model_dir: Path, languages: Sequence[str], code_lookup: Optional[Dict[str, str]] = None
 ) -> Dict[str, fasttext.FastText._FastText]:
     """Load fastText models for the specified languages."""
 
-    code_lookup = code_lookup or {}
     models: Dict[str, fasttext.FastText._FastText] = {}
     for lang in languages:
-        code = code_lookup.get(lang, lang[:2])
-        path = model_dir / f"cc.{code}.300.bin"
-        if not path.exists():
-            warnings.warn(f"Missing fastText model: {path}")
+        model = load_fasttext_model(model_dir, lang, code_lookup=code_lookup)
+        if model is None:
             continue
-        models[lang] = fasttext.load_model(path.as_posix())
+        models[lang] = model
     if not models:
         raise FileNotFoundError("No fastText models were loaded. Please download cc.<lang>.300.bin files.")
     return models
@@ -501,6 +512,18 @@ def main() -> None:
     print(f"Train size: {len(train_df)}, Val size: {len(val_df)}, Test size: {len(test_df)}")
 
     fasttext_models = load_fasttext_models(args.fasttext_model_dir, languages=args.languages, code_lookup=fasttext_codes)
+    if args.fasttext_default_language and args.fasttext_default_language not in fasttext_models:
+        default_model = load_fasttext_model(
+            args.fasttext_model_dir,
+            args.fasttext_default_language,
+            code_lookup=fasttext_codes,
+        )
+        if default_model is None:
+            raise FileNotFoundError(
+                "Missing fastText model for --fasttext-default-language="
+                f"{args.fasttext_default_language!r}. Download the corresponding cc.<lang>.300.bin file."
+            )
+        fasttext_models[args.fasttext_default_language] = default_model
     print(f"Loaded fastText models for: {', '.join(sorted(fasttext_models))}")
 
 
