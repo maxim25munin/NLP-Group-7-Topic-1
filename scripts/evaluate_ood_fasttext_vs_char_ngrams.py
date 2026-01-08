@@ -516,11 +516,14 @@ def main() -> None:
         train_df.text.tolist(), train_df.label.tolist(), fasttext_models, char_vectorizer
     )
 
+    use_label_based_models = args.fasttext_default_language is None
     id_fasttext = evaluate_fasttext_classifier(
         fasttext_clf,
         test_df.text.tolist(),
         test_df.label.tolist(),
         fasttext_models,
+        default_language=args.fasttext_default_language,
+        use_label_based_models=use_label_based_models,
     )
     id_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, test_df.text.tolist(), test_df.label.tolist())
     id_combined = evaluate_combined_classifier(
@@ -529,6 +532,8 @@ def main() -> None:
         test_df.label.tolist(),
         fasttext_models,
         char_vectorizer,
+        default_language=args.fasttext_default_language,
+        use_label_based_models=use_label_based_models,
     )
 
     print(f"fastText in-distribution accuracy: {id_fasttext['accuracy']:.4f}")
@@ -536,12 +541,15 @@ def main() -> None:
     print(f"fastText + Char n-gram in-distribution accuracy: {id_combined['accuracy']:.4f}")
 
     for lang, df in sorted(ood_sets.items()):
+        language_hint = None if args.fasttext_default_language else lang
         ood_fasttext = evaluate_fasttext_classifier(
             fasttext_clf,
             df.text.tolist(),
             df.label.tolist(),
             fasttext_models,
-            language_hint=lang,
+            language_hint=language_hint,
+            default_language=args.fasttext_default_language,
+            use_label_based_models=use_label_based_models,
         )
         ood_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, df.text.tolist(), df.label.tolist())
         ood_combined = evaluate_combined_classifier(
@@ -550,7 +558,9 @@ def main() -> None:
             df.label.tolist(),
             fasttext_models,
             char_vectorizer,
-            language_hint=lang,
+            language_hint=language_hint,
+            default_language=args.fasttext_default_language,
+            use_label_based_models=use_label_based_models,
         )
         print(
             "fastText OOD ({lang}) accuracy: {acc:.4f} | macro F1: {f1:.4f}".format(
@@ -579,6 +589,8 @@ def main() -> None:
         ood_df.text.tolist(),
         ood_df.label.tolist(),
         fasttext_models,
+        default_language=args.fasttext_default_language,
+        use_label_based_models=use_label_based_models,
     )
     combined_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, ood_df.text.tolist(), ood_df.label.tolist())
     combined_combined = evaluate_combined_classifier(
@@ -587,6 +599,8 @@ def main() -> None:
         ood_df.label.tolist(),
         fasttext_models,
         char_vectorizer,
+        default_language=args.fasttext_default_language,
+        use_label_based_models=use_label_based_models,
     )
 
     print(
