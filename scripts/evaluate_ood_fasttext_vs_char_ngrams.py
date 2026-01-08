@@ -205,13 +205,18 @@ def evaluate_fasttext_classifier(
     texts: Sequence[str],
     labels: Sequence[str],
     models: Dict[str, fasttext.FastText._FastText],
+    language_labels: Optional[Sequence[str]] = None,
     language_hint: Optional[str] = None,
     default_language: Optional[str] = None,
+    use_label_based_models: bool = True,
 ) -> Dict[str, object]:
+    resolved_labels = language_labels
+    if resolved_labels is None and use_label_based_models:
+        resolved_labels = labels
     features = extract_fasttext_features(
         texts,
         models,
-        language_labels=None,
+        language_labels=resolved_labels,
         language_hint=language_hint,
         default_language=default_language,
     )
@@ -284,14 +289,19 @@ def evaluate_combined_classifier(
     labels: Sequence[str],
     models: Dict[str, fasttext.FastText._FastText],
     vectorizer: TfidfVectorizer,
+    language_labels: Optional[Sequence[str]] = None,
     language_hint: Optional[str] = None,
     default_language: Optional[str] = None,
+    use_label_based_models: bool = True,
 ) -> Dict[str, object]:
+    resolved_labels = language_labels
+    if resolved_labels is None and use_label_based_models:
+        resolved_labels = labels
     features = build_combined_features(
         texts,
         models,
         vectorizer,
-        labels=None,
+        labels=resolved_labels,
         language_hint=language_hint,
         default_language=default_language,
     )
@@ -493,14 +503,6 @@ def main() -> None:
     fasttext_models = load_fasttext_models(args.fasttext_model_dir, languages=args.languages, code_lookup=fasttext_codes)
     print(f"Loaded fastText models for: {', '.join(sorted(fasttext_models))}")
 
-    default_language = args.fasttext_default_language
-    if default_language is None:
-        default_language = sorted(fasttext_models)[0]
-        warnings.warn(
-            "fastText evaluations now avoid using true labels to pick models. "
-            f"Using {default_language!r} for all label-agnostic evaluations; "
-            "set --fasttext-default-language to override."
-        )
 
     fasttext_clf = train_fasttext_classifier(train_df.text.tolist(), train_df.label.tolist(), fasttext_models)
     char_vectorizer, char_clf = train_char_ngram_classifier(
@@ -519,7 +521,6 @@ def main() -> None:
         test_df.text.tolist(),
         test_df.label.tolist(),
         fasttext_models,
-        default_language=default_language,
     )
     id_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, test_df.text.tolist(), test_df.label.tolist())
     id_combined = evaluate_combined_classifier(
@@ -528,7 +529,6 @@ def main() -> None:
         test_df.label.tolist(),
         fasttext_models,
         char_vectorizer,
-        default_language=default_language,
     )
 
     print(f"fastText in-distribution accuracy: {id_fasttext['accuracy']:.4f}")
@@ -579,7 +579,6 @@ def main() -> None:
         ood_df.text.tolist(),
         ood_df.label.tolist(),
         fasttext_models,
-        default_language=default_language,
     )
     combined_char = evaluate_char_ngram_classifier(char_vectorizer, char_clf, ood_df.text.tolist(), ood_df.label.tolist())
     combined_combined = evaluate_combined_classifier(
@@ -588,7 +587,6 @@ def main() -> None:
         ood_df.label.tolist(),
         fasttext_models,
         char_vectorizer,
-        default_language=default_language,
     )
 
     print(
