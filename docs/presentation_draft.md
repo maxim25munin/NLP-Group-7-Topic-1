@@ -27,7 +27,7 @@
   - OOV rates highlight brittleness: Latvian 24.1% OOV (469k unseen terms); Yoruba 37.9% OOV (20,801 unseen terms).
   - Insight: headline metrics mask coverage fragility; pair fastText with character-level features and report macro metrics for OOD robustness.
 - **Detailed OOD robustness (fastText vs. character n-grams, 5 languages)**
-  - **Macro OOD accuracy / F1:** fastText 0.9859 / 0.9656; char n-gram 0.9800 / 0.9063; fastText + char n-gram 0.9877 / 0.9695.
+  - **Macro OOD accuracy / F1 (mean of per-language F1s):** fastText 0.9859 / 0.6659; char n-gram 0.9800 / 0.5058; fastText + char n-gram 0.9877 / 0.7991.
   - **Per-language macro F1 (OOD):** fastText vs. char n-gram vs. combined
     - Kazakh: 0.4989 vs. 0.5000 vs. 0.4993.
     - Latvian: 0.3306 vs. 0.1976 vs. 0.4963 (largest robustness gain from char features).
