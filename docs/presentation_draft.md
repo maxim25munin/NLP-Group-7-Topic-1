@@ -4,6 +4,7 @@
 - **Goal:** Build and evaluate multilingual sentence-level language identification spanning Latin and Cyrillic scripts.
 - **Datasets:** Multilingual Wikipedia samples exported to CoNLL-U via `prepare_multilingual_conllu_stanza.py`, with Stanza annotations when available and heuristic fallbacks elsewhere. Evaluation uses 4,000 held-out sentences (400 per language) across 10 labels, as prepared in Milestone 1 and refined in Milestone 2.
 - **Languages:** German (de), English (en), French (fr), Swedish (sv), Latvian (lv), Swahili (sw), Wolof (wo), Yoruba (yo), Kazakh (kk), Urdu (ur).
+
 **Speaker notes:**
 - Open by framing this as a sentence-level language ID problem across two scripts.
 - Emphasize the controlled Wikipedia split and the 10-language balance to justify fair comparisons.
