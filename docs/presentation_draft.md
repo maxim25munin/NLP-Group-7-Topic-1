@@ -4,6 +4,10 @@
 - **Goal:** Build and evaluate multilingual sentence-level language identification spanning Latin and Cyrillic scripts.
 - **Datasets:** Multilingual Wikipedia samples exported to CoNLL-U via `prepare_multilingual_conllu_stanza.py`, with Stanza annotations when available and heuristic fallbacks elsewhere. Evaluation uses 4,000 held-out sentences (400 per language) across 10 labels, as prepared in Milestone 1 and refined in Milestone 2.
 - **Languages:** German (de), English (en), French (fr), Swedish (sv), Latvian (lv), Swahili (sw), Wolof (wo), Yoruba (yo), Kazakh (kk), Urdu (ur).
+**Speaker notes:**
+- Open by framing this as a sentence-level language ID problem across two scripts.
+- Emphasize the controlled Wikipedia split and the 10-language balance to justify fair comparisons.
+- Mention that Milestone 2 refines the same data pipeline to keep results comparable.
 
 ## Approaches compared
 - **Rule-based heuristics**
@@ -14,6 +18,10 @@
   - Multilingual transformer for sequence classification; robust across scripts but compute-heavy.
 - **fastText averaged embeddings (Q1 study)**
   - Multinomial logistic regression on pretrained word vectors; high ID accuracy but OOD brittleness due to OOV coverage gaps.
+**Speaker notes:**
+- Walk through methods from simplest to most compute-heavy.
+- Highlight interpretability of rules vs. robustness of XLM-R.
+- Flag fastText as an OOD case study rather than the main baseline.
 
 ## Key results
 - **Milestone 2 (in-domain Wikipedia evaluation, 10 languages)**
@@ -37,6 +45,11 @@
   - **Slide takeaway:** macro metrics surface the failure modes hidden by headline accuracy; combining fastText with character n-grams consistently improves OOD robustness.
   - **Visualization:** comparative macro metrics plot from `reports/ood_fasttext_char_summary.png`.
     ![OOD fastText vs. character n-gram macro metrics summary](../reports/ood_fasttext_char_summary.png)
+**Speaker notes:**
+- Lead with the headline: char n-gram is the best accuracy–cost trade-off in-domain.
+- Clarify that XLM-R is close but heavier, so it’s a choice for harder domains.
+- For OOD, stress that accuracy drop is small but macro F1 exposes real failures.
+- Point to the combined model as the robustness win, especially for Latvian/Yoruba.
 
 ## Deployment considerations: latency vs. hardware
 - **Character n-gram (TF–IDF + logistic regression)**
@@ -46,12 +59,20 @@
   - **Hardware:** GPU recommended; `base` needs ~1–2 GB VRAM for inference (more for batch >16). CPU-only runs are slow.
   - **Latency:** ~30–80 ms/sentence on an A10/T4 GPU; 300 ms+ on CPU without quantization or distillation.
 - **Deployment takeaway:** Default to the n-gram model for general serving and on-CPU environments; reserve XLM-R for domain-shifted or robustness-critical deployments where the added latency and GPU cost are acceptable.
+**Speaker notes:**
+- Translate metrics into practical deployment guidance (CPU vs. GPU).
+- Call out the magnitude difference in latency as the key decision point.
+- Tie back to stakeholders: “default to n-gram unless domain shift demands XLM-R.”
 
 ## Error analysis highlights
 - Rule-based errors: Latin-script overlap drags Kazakh/Latvian/Yoruba into German; numeric lists lack cues.
 - Char n-gram errors: confusions among orthographically similar pairs (English↔Yoruba, Swedish↔English) and short numeric snippets.
 - XLM-R errors: swaps between Swahili/Wolof and German for borrowed-vocabulary sentences; over-indexing on high-resource patterns.
 - fastText OOD errors: short or transliterated posts (e.g., two-token Kazakh) mislabelled as Yoruba; OOV-driven fragility despite high accuracy.
+**Speaker notes:**
+- Use this slide to humanize model behavior with concrete error patterns.
+- Emphasize that most errors are explainable and cluster by script/orthography.
+- Bridge to the next visuals as evidence for these patterns.
 
 ## Visual confusion matrices (10-language Wikipedia split)
 - **Rule-based heuristics:** confusion remains concentrated among closely related Latin-script languages, with Kazakh/Latvian/Yoruba bleeding into German but strong precision on Urdu thanks to script cues.
@@ -60,12 +81,20 @@
   ![Character n-gram logistic regression confusion matrix](../reports/output_0_14.png)
 - **XLM-R fine-tuning:** comparable to the n-gram model with slightly better French/Swedish separation and minimal cross-script leakage.
   ![XLM-R fine-tuning confusion matrix](../reports/output_0_17.png)
+**Speaker notes:**
+- Walk the audience left-to-right: rules → n-gram → XLM-R.
+- Point out the clean Cyrillic separation as a success story.
+- Note the persistent English/Swedish confusion as the main remaining ambiguity.
 
 ## fastText OOV coverage diagnostics
 - **Latvian vs. Yoruba fastText OOV rates (social media):** distributions highlight heavy tails and the prevalence of unseen terms, reinforcing the risk of deploying embeddings without character-level backups.
   ![Latvian and Yoruba OOV histograms](../reports/output_5_0.png)
 - **Diagnostic takeaway (current script):** the histograms signal where fastText alone is fragile due to high OOV rates. Our evaluation script (`scripts/evaluate_ood_xlmr_vs_fasttext.py`) is the pre-mitigation version, so mitigation remains a manual recommendation rather than an automated flag.
 - **Reproducibility:** generated via the notebook-style script `reports/latvian_yoruba_oov_histograms. run 4.1.2026.md`, which computes per-token OOV ratios from the OOD hate-speech corpus.
+**Speaker notes:**
+- Explain what OOV means and why it matters for word-only embeddings.
+- Highlight the stark difference between Latvian/Yoruba and why that drives failures.
+- Mention that current tooling surfaces the issue but doesn’t auto-mitigate yet.
 
 ## Mitigation plan: character features and subword models
 - **What:** Reduce OOV brittleness by moving from pure word embeddings to tokenization schemes that always produce features.
@@ -79,14 +108,25 @@
   4) **CLI toggles:** add `--use-char` and `--use-subword` flags to switch baselines; default to fastText for parity with prior results but enable side-by-side runs.
   5) **Outputs:** extend the metrics dataframe to include the new baselines and write confusion matrices for each. Add a short note in the plot titles indicating whether mitigation is enabled.
 - **Slide takeaway:** Coverage-focused mitigation is actionable now: load the char n-gram baseline, drop in a subword encoder, expose flags, and report OOV-aware metrics so production can choose the safest model for noisy domains.
+**Speaker notes:**
+- Position this as a concrete engineering backlog, not just research ideas.
+- Stress that character n-grams are already proven in-domain, so they’re the low-risk add-on.
+- Close with the message: “coverage mitigations are actionable and measurable.”
 
 ## Recommendations for stakeholders
 - **Primary baseline:** Character n-gram logistic regression for best accuracy–efficiency trade-off (Milestone 2).
 - **Diagnostic fallback:** Maintain rule-based heuristics for interpretability and rapid checks; extend with richer cues for Cyrillic variants.
 - **High-performance/shifted domains:** Deploy XLM-R when domain shift or code-switching warrants transformer robustness, accepting higher compute costs.
 - **OOD coverage checks:** When using pretrained embeddings (e.g., fastText), audit OOV rates per target domain and pair with character-level features to mitigate brittleness; mitigation is not yet built into the evaluation script.
+**Speaker notes:**
+- Deliver these as decision-ready recommendations for product owners.
+- Emphasize the default path (n-gram) and the escalation path (XLM-R).
+- Remind stakeholders to budget time for OOD audits.
 
 ## Next steps for the presentation
 - Pair the Latvian/Yoruba OOV histograms with a note that mitigation (character features, subword models) is currently manual and not yet wired into the evaluation script.
 - Confirm the latency/hardware slide placement after key results to frame accuracy vs. compute trade-offs before recommendations.
 - Prepare speaker notes emphasising when to trade accuracy for interpretability or compute efficiency.
+**Speaker notes:**
+- Close with immediate actions to finalize the deck structure.
+- Reiterate the narrative flow: results → deployment trade-offs → recommendations.
