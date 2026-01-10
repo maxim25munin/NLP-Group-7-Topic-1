@@ -26,31 +26,45 @@ Pause after listing the languages to let their diversity sink in. Your audience 
 ## Slide 2: Approaches Compared
 
 **Objective of this slide:**
+
 Give the audience a roadmap of the baseline methods, from simplest to most sophisticated.
 
 **Key talking points:**
 
 **Rule-based heuristics:**
+
 - "The simplest approach: we use linguistic intuition to write rules. For example, if a word contains the character ع (ayn), it's probably Arabic or Urdu. If a sentence uses a lot of ß, it's very likely German."
+
 - Mention the three kinds of rules: Unicode script detection (Are we in Latin? Cyrillic? Arabic block?), diacritics (ñ, ò, š, etc.), and curated cue words/affixes (–ung endings in German, –tion in French).
+
 - Trade-off: "Interpretable and fast, but labor-intensive to maintain as languages grow."
 
 **Character n-gram logistic regression:**
+
 - "We're moving from hand-written rules to learning patterns from data. Take every substring of length 2, 3, 4 from the text—bigrams, trigrams, 4-grams—and count how often each appears."
+
 - Explain the intuition: "The sequence 'ch' appears often in German and French, but rarely in Yoruba. So the model learns to weight these frequencies."
+
 - TF–IDF reweighting: "We downweight very common n-grams that appear in all languages, so rare but distinctive patterns get more signal."
+
 - Trade-off: "Lightweight training and inference, strong accuracy, works out of the box without language expertise."
 
 **XLM-RoBERTa fine-tuning:**
+
 - "Transformer models like BERT learn deep patterns from massive multilingual text. XLM-RoBERTa is trained on 100+ languages, so it already knows what language-specific patterns look like."
+
 - Fine-tuning process: "We take the pretrained model and show it our 8,000 training sentences, allowing it to adapt its weights specifically to the 10 languages we care about."
+
 - Trade-off: "More compute (needs a GPU), slower inference, but very robust—the model learns contextual and semantic patterns, not just character patterns."
 
 **fastText averaged embeddings (Q1 case study):**
+
 - "For Question 1, we explored word embeddings: average the fastText vectors for all words in a sentence, then feed to logistic regression."
+
 - Why it matters: "It bridges embeddings (DL) and classical ML, but—as we'll see later—it's risky when deployed to new domains."
 
 **Delivery tip:**
+
 Use hand gestures or slides to show progression: point up or forward as you move from simple to complex. This helps the audience track the increasing sophistication.
 
 **Timing:** 2–2.5 minutes
