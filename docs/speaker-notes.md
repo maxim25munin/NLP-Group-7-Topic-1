@@ -6,14 +6,19 @@
 Set context for the audience and establish what problem you're solving.
 
 **Key talking points:**
+
 - Start with: "Today we're presenting our work on **multilingual sentence-level language identification** across 10 languages spanning both Latin and Cyrillic scripts."
+
 - Emphasize the scope: We built and evaluated systems to automatically detect which language a sentence is written in, moving beyond traditional single-script approaches.
+
 - Highlight the languages: German, English, French, Swedish, Latvian, Swahili, Wolof, Yoruba, Kazakh, and Urdu. These represent both high-resource and low-resource languages, and mix two scripts entirely.
+
 - Frame the challenge: "Language identification sounds simple—just look at the letters, right? But when you have overlapping orthographies (like English and Yoruba), transliterated text, and domain shift to social media, it becomes a real problem."
 
 **Timing:** 60–90 seconds
 
 **Delivery tip:**
+
 Pause after listing the languages to let their diversity sink in. Your audience will appreciate that you're not just working with European languages.
 
 ---
