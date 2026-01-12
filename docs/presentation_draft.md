@@ -54,6 +54,24 @@
 - For OOD, stress that accuracy drop is small but macro F1 exposes real failures.
 - Point to the combined model as the robustness win, especially for Latvian/Yoruba.
 
+## Final solution slide: fastText primary + character n-gram fallback
+- **Model design:** fastText embeddings + logistic regression for primary predictions, with a character n-gram TF–IDF + logistic regression fallback when the sentence OOV ratio exceeds **0.3**.
+- **Coverage intent:** route noisy, misspelled, or transliterated sentences to the char n-gram model for higher robustness.
+- **Training setup (final notebook):**
+  - Languages: Kazakh, Latvian, Swedish, Yoruba, Urdu.
+  - Max sentences per language: 2,000; split 0.7 / 0.1 / 0.2.
+  - Char n-gram settings: ngram range 3–5, min_df 2, max_features 200k.
+- **Results (from final solution run log):**
+  - **In-domain (Wikipedia):** Accuracy 0.9755; Macro F1 0.9754.
+  - **OOD (combined datasets):** Accuracy 0.9764; Macro F1 0.9007 (Macro Recall 0.9839).
+  - **Routing behavior:** 80.55% of in-domain and 92.04% of OOD sentences routed to fallback.
+- **Slide takeaway:** The fallback routing mitigates OOV brittleness while preserving strong accuracy, making it the recommended deployment path for noisy OOD data.
+
+**Speaker notes:**
+- Explain that the final solution operationalizes the mitigation plan with an explicit OOV routing threshold.
+- Emphasize that OOD macro metrics are the stress test for robustness, and the fallback improves them.
+- Call out the high fallback usage as evidence of real-world noise and justify the two-stage design.
+
 ## Deployment considerations: latency vs. hardware
 - **Character n-gram (TF–IDF + logistic regression)**
   - **Hardware:** CPU-only; 10–20 MB model fits in laptop memory.
